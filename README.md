@@ -89,14 +89,7 @@ npm run dev
 - ✅ No message queue
 - ✅ No Docker requirements
 
-### What's Removed for Beta
-- ❌ Database (using in-memory storage)
-- ❌ RabbitMQ message queue
-- ❌ WebSocket connections
-- ❌ Docker containers
-- ❌ Complex worker processes
-- ❌ IP blocking functionality (coming in next version)
-
+  
 ## 📋 Google Ads Setup
 
 1. **Create Google Cloud Project**

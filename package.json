@@ -51,5 +51,9 @@
     "monorepo"
   ],
   "author": "ClickGuard Team",
-  "license": "MIT"
-} 
+  "license": "MIT",
+  "dependencies": {
+    "amqplib": "^0.10.8",
+    "node-fetch": "^3.3.2"
+  }
+}

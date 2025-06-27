@@ -1,12 +1,15 @@
-
 import React, { useState, useEffect } from 'react';
 import { Shield, AlertTriangle, TrendingUp, DollarSign, Activity, Globe, Clock } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import GoogleAdsConnect from '@/components/GoogleAdsConnect';
 
 const Index = () => {
   const [isConnected, setIsConnected] = useState(false);
+  const [connectedAccounts, setConnectedAccounts] = useState([]);
+  const [mccConnectionStatus, setMccConnectionStatus] = useState('disconnected');
+  const [mccInfo, setMccInfo] = useState(null);
 
   // Sample data for when connected
   const chartData = [
@@ -48,76 +51,207 @@ const Index = () => {
     { ip: '217.182.139.45', country: 'Germany', flag: '🇩🇪', reason: 'VPN Detected', datetime: '26.03.2025 14:15' },
   ];
 
+  // Check if user has connected accounts
+  useEffect(() => {
+    const checkConnectedAccounts = async () => {
+      try {
+        const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+        const token = localStorage.getItem('authToken');
+        
+        if (!token) {
+          // No token means user is not authenticated, so no connected accounts
+          setIsConnected(false);
+          return;
+        }
+
+        const response = await fetch(`${backendUrl}/api/v1/google-ads/accounts`, {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          setConnectedAccounts(data.accounts || []);
+          setIsConnected(data.accounts && data.accounts.length > 0);
+        } else {
+          // If the request fails, assume no connected accounts
+          setIsConnected(false);
+        }
+      } catch (error) {
+        console.error('Error checking connected accounts:', error);
+        setIsConnected(false);
+      }
+    };
+
+    checkConnectedAccounts();
+  }, []);
+
+  useEffect(() => {
+    console.log('🏠 Home page (/) loaded!');
+  }, []);
+
+  useEffect(() => {
+    fetch('/api/v1/dashboard/mcc-info', {
+      credentials: 'include',
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          console.log('MCC Info:', data);
+          setMccConnectionStatus('connected');
+          setMccInfo(data);
+        } else {
+          console.error('Failed to fetch MCC info:', data.error);
+          setMccConnectionStatus('error');
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching MCC info:', err);
+        setMccConnectionStatus('error');
+      });
+  }, []);
+
+  const handleGetMccInfo = () => {
+    setMccConnectionStatus('loading');
+    fetch('/api/v1/dashboard/mcc-info', {
+      credentials: 'include',
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          console.log('MCC Info:', data);
+          setMccConnectionStatus('connected');
+          setMccInfo(data);
+        } else {
+          console.error('Failed to fetch MCC info:', data.error);
+          setMccConnectionStatus('error');
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching MCC info:', err);
+        setMccConnectionStatus('error');
+      });
+  };
+
+  const handleGetMccCampaigns = () => {
+    fetch('/api/v1/dashboard/mcc-campaigns', {
+      credentials: 'include',
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.success) {
+          console.log('MCC Campaigns:', data);
+        } else {
+          console.error('Failed to fetch MCC campaigns:', data.error);
+        }
+      })
+      .catch(err => {
+        console.error('Error fetching MCC campaigns:', err);
+      });
+  };
+
   if (!isConnected) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
+      <div className="min-h-screen bg-background dark:bg-neutral-900">
         {/* Header */}
-        <header className="bg-white shadow-sm border-b">
+        <header className="bg-card shadow-sm border-b">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between items-center h-16">
               <div className="flex items-center space-x-2">
                 <Shield className="h-8 w-8 text-blue-600" />
                 <span className="text-2xl font-bold text-gray-900">ClickGuard</span>
+                <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">Beta</span>
               </div>
               <div className="flex items-center space-x-4">
-                <span className="text-sm text-gray-600">John Smith</span>
+                <span className="text-sm text-gray-600">Welcome</span>
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                  <span className="text-white text-sm font-medium">JS</span>
+                  <span className="text-white text-sm font-medium">U</span>
                 </div>
-                <Button variant="outline" size="sm">Logout</Button>
               </div>
             </div>
           </div>
         </header>
 
-        {/* Onboarding */}
-        <div className="flex items-center justify-center min-h-[calc(100vh-4rem)]">
-          <div className="max-w-md w-full mx-4">
-            <Card className="text-center shadow-xl border-0 bg-white/90 backdrop-blur">
-              <CardHeader className="pb-6">
-                <div className="mx-auto w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center mb-4">
-                  <Shield className="h-8 w-8 text-white" />
+        {/* Main Content */}
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="max-w-4xl mx-auto">
+            <div className="text-center mb-8">
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+                Welcome to ClickGuard Beta
+              </h1>
+              <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                Protect your Google Ads campaigns from click fraud. Connect your Google Ads account to get started.
+              </p>
+            </div>
+
+            {/* MCC Connection Status */}
+            <div className="mb-6 p-4 rounded-lg border">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <div className={`w-3 h-3 rounded-full ${
+                    mccConnectionStatus === 'connected' ? 'bg-green-500' :
+                    mccConnectionStatus === 'loading' ? 'bg-yellow-500' :
+                    mccConnectionStatus === 'error' ? 'bg-red-500' : 'bg-gray-400'
+                  }`}></div>
+                  <span className="font-medium">MCC Connection Status:</span>
+                  <span className={`${
+                    mccConnectionStatus === 'connected' ? 'text-green-600' :
+                    mccConnectionStatus === 'loading' ? 'text-yellow-600' :
+                    mccConnectionStatus === 'error' ? 'text-red-600' : 'text-gray-600'
+                  }`}>
+                    {mccConnectionStatus === 'connected' ? 'Connected' :
+                     mccConnectionStatus === 'loading' ? 'Connecting...' :
+                     mccConnectionStatus === 'error' ? 'Connection Failed' : 'Disconnected'}
+                  </span>
                 </div>
-                <CardTitle className="text-2xl font-bold text-gray-900">Welcome to ClickGuard!</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-gray-600 leading-relaxed">
-                  To start protecting your ad budget from click fraud, please connect your Google Ads account.
-                </p>
-                <Button 
-                  onClick={() => setIsConnected(true)}
-                  className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 text-lg font-medium"
-                  size="lg"
-                >
-                  Connect Google Ads Account
-                </Button>
-                <p className="text-xs text-gray-500 mt-4">
-                  Your data is encrypted and secure. We never access your account without permission.
-                </p>
-              </CardContent>
-            </Card>
+                {mccInfo && (
+                  <div className="text-sm text-gray-600">
+                    MCC ID: {mccInfo.id} | Name: {mccInfo.name}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <GoogleAdsConnect />
+            <div className="flex justify-center mt-8 space-x-4">
+              <button
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                onClick={handleGetMccInfo}
+                aria-label="Get MCC Account ID"
+              >
+                Get MCC Account ID
+              </button>
+              <button
+                className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400"
+                onClick={handleGetMccCampaigns}
+                aria-label="Get MCC Campaigns"
+              >
+                Get MCC Campaigns
+              </button>
+            </div>
           </div>
-        </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background dark:bg-neutral-900">
       {/* Header */}
-      <header className="bg-white shadow-sm border-b sticky top-0 z-50">
+      <header className="bg-card shadow-sm border-b sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <div className="flex items-center space-x-2">
               <Shield className="h-8 w-8 text-blue-600" />
               <span className="text-2xl font-bold text-gray-900">ClickGuard</span>
+              <span className="text-sm text-gray-500 bg-gray-100 px-2 py-1 rounded">Beta</span>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-600 hidden sm:block">John Smith</span>
-              <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-medium">JS</span>
+              <span className="text-sm text-gray-600 hidden sm:block">Connected</span>
+              <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
+                <span className="text-white text-sm font-medium">✓</span>
               </div>
-              <Button variant="outline" size="sm">Logout</Button>
             </div>
           </div>
         </div>
@@ -125,9 +259,42 @@ const Index = () => {
 
       {/* Main Dashboard */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+        {/* MCC Connection Status */}
+        <div className="mb-6 p-4 rounded-lg border bg-white dark:bg-neutral-800">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className={`w-3 h-3 rounded-full ${
+                mccConnectionStatus === 'connected' ? 'bg-green-500' :
+                mccConnectionStatus === 'loading' ? 'bg-yellow-500' :
+                mccConnectionStatus === 'error' ? 'bg-red-500' : 'bg-gray-400'
+              }`}></div>
+              <span className="font-medium">MCC Connection Status:</span>
+              <span className={`${
+                mccConnectionStatus === 'connected' ? 'text-green-600' :
+                mccConnectionStatus === 'loading' ? 'text-yellow-600' :
+                mccConnectionStatus === 'error' ? 'text-red-600' : 'text-gray-600'
+              }`}>
+                {mccConnectionStatus === 'connected' ? 'Connected' :
+                 mccConnectionStatus === 'loading' ? 'Connecting...' :
+                 mccConnectionStatus === 'error' ? 'Connection Failed' : 'Disconnected'}
+              </span>
+            </div>
+            {mccInfo && (
+              <div className="text-sm text-gray-600">
+                MCC ID: {mccInfo.id} | Name: {mccInfo.name}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Google Ads Integration Section */}
+        <div className="mb-8">
+          <GoogleAdsConnect />
+        </div>
+
         {/* KPI Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
+          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow bg-card dark:bg-neutral-800">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -141,7 +308,7 @@ const Index = () => {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
+          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow bg-card dark:bg-neutral-800">
             <CardContent className="p-6">
               <div>
                 <p className="text-sm font-medium text-gray-600">Total Blocked Clicks</p>
@@ -151,7 +318,7 @@ const Index = () => {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
+          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow bg-card dark:bg-neutral-800">
             <CardContent className="p-6">
               <div>
                 <p className="text-sm font-medium text-gray-600">Protected Budget</p>
@@ -161,7 +328,7 @@ const Index = () => {
             </CardContent>
           </Card>
 
-          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow">
+          <Card className="border-0 shadow-md hover:shadow-lg transition-shadow bg-card dark:bg-neutral-800">
             <CardContent className="p-6">
               <div>
                 <p className="text-sm font-medium text-gray-600">Most Attacked Keyword</p>
@@ -172,7 +339,7 @@ const Index = () => {
         </div>
 
         {/* Chart */}
-        <Card className="mb-8 border-0 shadow-md">
+        <Card className="mb-8 border-0 shadow-md bg-card dark:bg-neutral-800">
           <CardHeader>
             <CardTitle className="text-lg font-semibold text-gray-900">Blocked Click Activity (Last 30 Days)</CardTitle>
           </CardHeader>
@@ -201,10 +368,10 @@ const Index = () => {
                   <Line 
                     type="monotone" 
                     dataKey="blocked" 
-                    stroke="#2563eb" 
+                    stroke="#3b82f6" 
                     strokeWidth={3}
-                    dot={{ fill: '#2563eb', strokeWidth: 2, r: 4 }}
-                    activeDot={{ r: 6, stroke: '#2563eb', strokeWidth: 2 }}
+                    dot={{ fill: '#3b82f6', strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6, stroke: '#3b82f6', strokeWidth: 2 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -212,76 +379,50 @@ const Index = () => {
           </CardContent>
         </Card>
 
-        {/* Live Activity and Attack Distribution */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Live Threat Feed */}
-          <Card className="border-0 shadow-md">
+        {/* Two Column Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* Threat Feed */}
+          <Card className="border-0 shadow-md bg-card dark:bg-neutral-800">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold text-gray-900 flex items-center">
-                <Activity className="h-5 w-5 mr-2" />
-                Live Threat Feed
-              </CardTitle>
+              <CardTitle className="text-lg font-semibold text-gray-900">Live Threat Feed</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4 max-h-80 overflow-y-auto">
-                {threatFeed.map((item) => {
-                  const IconComponent = item.icon;
-                  return (
-                    <div key={item.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
-                      <div className={`p-2 rounded-full ${item.type === 'block' ? 'bg-green-100' : 'bg-orange-100'}`}>
-                        <IconComponent className={`h-4 w-4 ${item.type === 'block' ? 'text-green-600' : 'text-orange-600'}`} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-gray-900">{item.message}</p>
-                        <p className="text-xs text-gray-500 mt-1 flex items-center">
-                          <Clock className="h-3 w-3 mr-1" />
-                          {item.time}
-                        </p>
-                      </div>
+              <div className="space-y-4">
+                {threatFeed.map((threat) => (
+                  <div key={threat.id} className="flex items-start space-x-3 p-3 bg-gray-50 rounded-lg">
+                    <threat.icon className={`h-5 w-5 mt-0.5 ${
+                      threat.type === 'block' ? 'text-red-500' : 'text-yellow-500'
+                    }`} />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-gray-900">{threat.message}</p>
+                      <p className="text-xs text-gray-500 mt-1">{threat.time}</p>
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             </CardContent>
           </Card>
 
-          {/* Attack Type Distribution */}
-          <Card className="border-0 shadow-md">
+          {/* Recent Blocks */}
+          <Card className="border-0 shadow-md bg-card dark:bg-neutral-800">
             <CardHeader>
-              <CardTitle className="text-lg font-semibold text-gray-900">Block Reasons (Last 30 Days)</CardTitle>
+              <CardTitle className="text-lg font-semibold text-gray-900">Recent IP Blocks</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={pieData}
-                      cx="50%"
-                      cy="50%"
-                      innerRadius={60}
-                      outerRadius={100}
-                      paddingAngle={5}
-                      dataKey="value"
-                    >
-                      {pieData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-4 space-y-2">
-                {pieData.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div 
-                        className="w-3 h-3 rounded-full mr-2" 
-                        style={{ backgroundColor: item.color }}
-                      ></div>
-                      <span className="text-sm text-gray-700">{item.name}</span>
+              <div className="space-y-3">
+                {recentBlocks.map((block, index) => (
+                  <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-lg">{block.flag}</span>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900">{block.ip}</p>
+                        <p className="text-xs text-gray-500">{block.country}</p>
+                      </div>
                     </div>
-                    <span className="text-sm font-medium text-gray-900">{item.value}%</span>
+                    <div className="text-right">
+                      <p className="text-xs font-medium text-red-600">{block.reason}</p>
+                      <p className="text-xs text-gray-500">{block.datetime}</p>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -289,45 +430,22 @@ const Index = () => {
           </Card>
         </div>
 
-        {/* Recent Blocks Table */}
-        <Card className="border-0 shadow-md">
-          <CardHeader>
-            <CardTitle className="text-lg font-semibold text-gray-900">Recently Blocked IP Addresses</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">IP Address</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Country</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Block Reason</th>
-                    <th className="text-left py-3 px-4 font-medium text-gray-600">Date/Time</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {recentBlocks.map((block, index) => (
-                    <tr key={index} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                      <td className="py-3 px-4 font-mono text-sm text-gray-900">{block.ip}</td>
-                      <td className="py-3 px-4">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-lg">{block.flag}</span>
-                          <span className="text-sm text-gray-700">{block.country}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                          {block.reason}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{block.datetime}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="flex justify-center mt-8 space-x-4">
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400"
+            onClick={handleGetMccInfo}
+            aria-label="Get MCC Account ID"
+          >
+            Get MCC Account ID
+          </button>
+          <button
+            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-400"
+            onClick={handleGetMccCampaigns}
+            aria-label="Get MCC Campaigns"
+          >
+            Get MCC Campaigns
+          </button>
+        </div>
       </main>
     </div>
   );

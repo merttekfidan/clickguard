@@ -1,0 +1,4 @@
+# Override .gitignore to show .env files in Cursor
+# This allows you to edit .env files in Cursor while keeping them out of git
+!.env
+!.env.* 

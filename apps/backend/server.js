@@ -1,124 +1,108 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const { createServer } = require('http');
-const { Server } = require('socket.io');
 require('dotenv').config();
 
-const { initializeDatabase, syncModels } = require('./src/config/database');
-const { initializeQueue } = require('./src/services/queue.service');
-const { initializeWebSocket } = require('./src/services/websocket.service');
-
-// Import routes
-const trackerRoutes = require('./src/api/routes/tracker.routes');
-const dashboardRoutes = require('./src/api/routes/dashboard.routes');
-const authRoutes = require('./src/api/routes/auth.routes');
-
-// Import workers
-const clickProcessorWorker = require('./src/workers/clickProcessor.worker');
-const googleAdsActionWorker = require('./src/workers/googleAdsAction.worker');
+// Import only Google Ads routes
+const googleAdsRoutes = require('./src/modules/google-ads/routes');
 
 const app = express();
-const server = createServer(app);
-const io = new Server(server, {
-  cors: {
-    origin: process.env.FRONTEND_URL || "http://localhost:5173",
-    methods: ["GET", "POST"]
-  }
-});
-
 const PORT = process.env.PORT || 3000;
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      "script-src": ["'self'", "'unsafe-inline'"],
+    },
+  },
+}));
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173",
   credentials: true
 }));
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.'
-});
-app.use('/api/', limiter);
-
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Only Google Ads API Routes
+app.use('/api/v1/google-ads', googleAdsRoutes);
+
 // Health check endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ 
+  res.json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    service: 'ClickGuard Backend'
+    environment: process.env.NODE_ENV || 'development'
   });
 });
 
-// API routes
-app.use('/api/v1/track', trackerRoutes);
-app.use('/api/v1/dashboard', dashboardRoutes);
-app.use('/api/v1/auth', authRoutes);
-
-// 404 handler
-app.use('*', (req, res) => {
-  res.status(404).json({ 
-    error: 'Endpoint not found',
-    path: req.originalUrl
-  });
-});
-
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error('Global error handler:', err);
-  res.status(err.status || 500).json({
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
-
-// Initialize services and start server
-const initializeServices = async () => {
+// Google Ads status endpoint
+app.get('/api/v1/google-ads/status', (req, res) => {
   try {
-    console.log('🚀 Initializing ClickGuard Backend...');
+    const GoogleAdsService = require('./src/modules/google-ads/service');
+    const googleAdsService = new GoogleAdsService();
+    const authStatus = googleAdsService.getAuthStatus();
     
-    // Initialize database
-    await initializeDatabase();
-    console.log('✅ Database initialized');
-    
-    // Sync models
-    await syncModels();
-    console.log('✅ Models synchronized');
-    
-    // Initialize passport after models are available
-    require('./src/config/passport');
-    console.log('✅ Passport initialized');
-    
-    // Initialize message queue
-    await initializeQueue();
-    console.log('✅ Message queue initialized');
-    
-    // Initialize WebSocket service
-    initializeWebSocket(io);
-    console.log('✅ WebSocket service initialized');
-    
-    // Start workers
-    clickProcessorWorker.start();
-    googleAdsActionWorker.start();
-    console.log('✅ Workers started');
-    
-    // Start server
-    server.listen(PORT, () => {
-      console.log(`🎯 ClickGuard Backend running on port ${PORT}`);
-      console.log(`📊 Health check: http://localhost:${PORT}/health`);
-      console.log(`🔗 Environment: ${process.env.NODE_ENV}`);
+    res.json({
+      status: 'OK',
+      googleAds: authStatus,
+      timestamp: new Date().toISOString()
     });
+  } catch (error) {
+    res.status(500).json({
+      status: 'ERROR',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error('❌ Server error:', err);
+  res.status(500).json({ 
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : 'Something went wrong'
+  });
+});
+
+// Start server
+const startServer = async () => {
+  try {
+    // Initialize Google Ads authentication only
+    try {
+      const GoogleAdsService = require('./src/modules/google-ads/service');
+      const googleAdsService = new GoogleAdsService();
+      const authInitialized = await googleAdsService.initialize();
+      
+      if (authInitialized) {
+        console.log('✅ Google Ads authentication initialized successfully');
+      } else {
+        console.log('⚠️  Google Ads authentication failed - some features may not work');
+      }
+    } catch (error) {
+      console.log('⚠️  Google Ads authentication skipped:', error.message);
+    }
+
+    const server = app.listen(PORT, () => {
+      console.log(`🚀 ClickGuard Google Ads Auth Server running on port ${PORT}`);
+      console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:5173'}`);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔧 Development mode enabled');
+        console.log('🔐 Google Ads Status: http://localhost:3000/api/v1/google-ads/status');
+      }
+    });
+
+    // Store server reference for graceful shutdown
+    global.server = server;
     
   } catch (error) {
-    console.error('❌ Failed to initialize services:', error);
+    console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 };
@@ -128,16 +112,21 @@ const gracefulShutdown = async (signal) => {
   console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
   
   try {
-    // Stop workers
-    await clickProcessorWorker.stop();
-    await googleAdsActionWorker.stop();
-    console.log('✅ Workers stopped');
-    
     // Close server
-    server.close(() => {
-      console.log('✅ HTTP server closed');
+    if (global.server) {
+      global.server.close(() => {
+        console.log('✅ HTTP server closed');
+        process.exit(0);
+      });
+      
+      // Force close after 10 seconds
+      setTimeout(() => {
+        console.error('❌ Could not close connections in time, forcefully shutting down');
+        process.exit(1);
+      }, 10000);
+    } else {
       process.exit(0);
-    });
+    }
     
   } catch (error) {
     console.error('❌ Error during shutdown:', error);
@@ -160,5 +149,5 @@ process.on('unhandledRejection', (reason, promise) => {
   process.exit(1);
 });
 
-// Start the application
-initializeServices(); 
+// Start the server
+startServer(); 

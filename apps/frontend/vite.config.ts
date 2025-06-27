@@ -12,6 +12,18 @@ export default defineConfig(({ mode }) => ({
       '/api': 'http://localhost:3000',
     },
   },
+  build: {
+    outDir: 'dist',
+    sourcemap: mode === 'development',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          ui: ['@radix-ui/react-dialog', '@radix-ui/react-button', '@radix-ui/react-card']
+        }
+      }
+    }
+  },
   plugins: [
     react(),
     mode === 'development' &&
@@ -22,4 +34,7 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  define: {
+    __DEV__: mode === 'development'
+  }
 }));

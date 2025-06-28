@@ -30,9 +30,9 @@
     "docker:down": "docker-compose down"
   },
   "devDependencies": {
-    "concurrently": "^8.2.2",
-    "husky": "^8.0.3",
-    "lint-staged": "^15.2.0"
+    "concurrently": "^9.2.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.1.2"
   },
   "engines": {
     "node": ">=18.0.0",
@@ -54,6 +54,7 @@
   "license": "MIT",
   "dependencies": {
     "amqplib": "^0.10.8",
-    "node-fetch": "^3.3.2"
+    "node-fetch": "^3.3.2",
+    "request-ip": "^3.3.0"
   }
 }

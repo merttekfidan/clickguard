@@ -64,6 +64,12 @@ class GoogleAdsService {
   async getAvailableAccounts() {
     try {
       const refreshToken = googleAdsAuthService.getRefreshToken();
+      
+      if (!refreshToken) {
+        console.log('⚠️  No refresh token available for Google Ads API');
+        return [];
+      }
+      
       const query = `
         SELECT
           customer_client.id,
@@ -93,7 +99,10 @@ class GoogleAdsService {
       return [];
     } catch (error) {
       console.error('❌ Failed to get available accounts:', error.message);
-      throw new Error(`Failed to get available accounts: ${error.message}`);
+      
+      // Don't throw the error, just return empty array
+      // This prevents the gRPC error from crashing the server
+      return [];
     }
   }
 
@@ -101,6 +110,12 @@ class GoogleAdsService {
   async getAccountInfo(clientAdsId) {
     try {
       const refreshToken = googleAdsAuthService.getRefreshToken();
+      
+      if (!refreshToken) {
+        console.log('⚠️  No refresh token available for Google Ads API');
+        throw new Error('No refresh token available');
+      }
+      
       const query = `
         SELECT
           customer.id,

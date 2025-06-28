@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClickGuard Tracker Test</title>
+    <!--<script src="http://192.168.0.13:3001/api/v1/tracker/script?v=" + Date.now()></script>-->
+    <script src="clickguard-tracker.js"></script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .log {
+            background: #000;
+            color: #0f0;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .info {
+            background: #e7f3ff;
+            border: 1px solid #b3d9ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>ClickGuard Tracker Test Page</h1>
+    
+    <div class="info">
+        <strong>Note:</strong> This simplified tracker only sends data once when the page loads. 
+        It tracks the initial page view and collects IP/user data automatically.
+    </div>
+    
+    <div class="container">
+        <h2>How to Use</h2>
+        <p>This page demonstrates how to integrate the ClickGuard tracking script into your website.</p>
+        
+        <h3>1. Include the Script</h3>
+        <pre><code>&lt;script src="http://localhost:3001/api/v1/tracker/script"&gt;&lt;/script&gt;</code></pre>
+        
+        <h3>2. That's it!</h3>
+        <p>The script automatically tracks page views when the page loads. No additional configuration needed.</p>
+        
+        <h3>3. Optional: Get Session ID</h3>
+        <pre><code>const sessionId = ClickGuard.getSessionId();</code></pre>
+    </div>
+    
+    <div class="container">
+        <h2>Test Controls</h2>
+        <button onclick="getSessionId()">Get Session ID</button>
+        <button onclick="getStats()">Get Stats</button>
+        <button onclick="reloadPage()">Reload Page (Test New Page View)</button>
+    </div>
+    
+    <div class="container">
+        <h2>Console Log</h2>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        // Test functions
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.innerHTML += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+        
+        function getSessionId() {
+            const sessionId = ClickGuard.getSessionId();
+            log(`Session ID: ${sessionId}`);
+        }
+        
+        async function getStats() {
+            try {
+                log('Fetching stats...');
+                const response = await fetch('/api/v1/tracker/stats');
+                const data = await response.json();
+                log(`Stats: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`Error fetching stats: ${error.message}`);
+            }
+        }
+        
+        function reloadPage() {
+            log('Reloading page to test new page view...');
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        }
+        
+        let isLogging = false;
+        const originalLog = console.log;
+        console.log = function(...args) {
+            if (!isLogging) {
+                isLogging = true;
+                try {
+                    log(args.map(String).join(' '));
+                } finally {
+                    isLogging = false;
+                }
+            }
+            originalLog.apply(console, args);
+        };
+        
+        // Log when page loads
+        log('Page loaded. ClickGuard tracking script is active.');
+        log('Page view data will be sent automatically.');
+    </script>
+</body>
+</html> 

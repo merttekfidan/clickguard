@@ -7,11 +7,12 @@
 3. [API Implementation](#api-implementation)
 4. [Authentication Flow](#authentication-flow)
 5. [Google Ads Integration](#google-ads-integration)
-6. [Security Implementation](#security-implementation)
-7. [Error Handling](#error-handling)
-8. [Performance Considerations](#performance-considerations)
-9. [Development Guidelines](#development-guidelines)
-10. [Deployment Architecture](#deployment-architecture)
+6. [Tracker Module](#tracker-module)
+7. [Security Implementation](#security-implementation)
+8. [Error Handling](#error-handling)
+9. [Performance Considerations](#performance-considerations)
+10. [Development Guidelines](#development-guidelines)
+11. [Deployment Architecture](#deployment-architecture)
 
 ## Architecture Overview
 
@@ -237,6 +238,62 @@ try {
   throw new Error(`Failed to run Google Ads query: ${error.message}`);
 }
 ```
+
+## Tracker Module
+
+The **Tracker Module** provides a lightweight, plug-and-play solution for collecting user IP, session, and page analytics from any website.
+
+### Features
+- IP Address collection (IPv4/IPv6 supported)
+- Session tracking with unique session IDs
+- Automatic page view analytics
+- In-memory storage (no database required)
+- Easy integration via a script tag
+- Built-in test page for validation
+
+### API Endpoints
+- `POST /api/v1/tracker` — Receives tracking data from the client script and stores it in memory.
+- `GET /api/v1/tracker/stats` — Returns basic in-memory tracking statistics.
+- `GET /api/v1/tracker/script` — Serves the tracking JavaScript (`clickguard-tracker.js`).
+- `GET /api/v1/tracker/test` — Serves a test HTML page (`test-tracker.html`) for local or remote testing.
+
+### Integration
+- Add the following script tag to your website (update the domain as needed):
+  ```html
+  <script src="/api/v1/tracker/script"></script>
+  ```
+- The script will automatically send a page view event on load.
+- Visit `/api/v1/tracker/test` on your backend to see a demo and test tracking.
+- Access the session ID in JS: `const sessionId = ClickGuard.getSessionId();`
+
+### Data Collected
+- IP Address (from backend)
+- User Agent
+- Session ID
+- Page URL, domain, referrer
+- Screen resolution, viewport
+- Timezone, language
+- Timestamp
+
+### File Structure
+```
+modules/tracker/
+├── index.js              # Module exports
+├── routes.js             # API routes
+├── controller.js         # Request handlers (handles IP extraction, etc.)
+├── service.js            # In-memory storage and analytics
+├── public/
+│   ├── clickguard-tracker.js   # Client-side tracking script
+│   └── test-tracker.html       # Test/demo page
+└── README.md             # Module documentation
+```
+
+### Notes
+- For production, serve the backend and script over HTTPS.
+- Update CORS policy as needed for your domains.
+- For local testing, use LAN IP or tunneling (e.g., ngrok) for cross-device access.
+
+For more details, see `modules/tracker/README.md` and the code comments in each file.
 
 ## Security Implementation
 

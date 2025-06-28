@@ -3,8 +3,10 @@ const cors = require('cors');
 const helmet = require('helmet');
 require('dotenv').config();
 
-// Import only Google Ads routes
+// Import routes
 const googleAdsRoutes = require('./src/modules/google-ads/routes');
+const dashboardRoutes = require('./src/api/routes/dashboard');
+const trackerRoutes = require('./src/modules/tracker/routes');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -19,16 +21,18 @@ app.use(helmet({
   },
 }));
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  credentials: true
+  origin: '*',
+  credentials: false
 }));
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// Only Google Ads API Routes
+// API Routes
 app.use('/api/v1/google-ads', googleAdsRoutes);
+app.use('/api/v1/dashboard', dashboardRoutes);
+app.use('/api/v1/tracker', trackerRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -44,14 +48,28 @@ app.get('/api/v1/google-ads/status', (req, res) => {
   try {
     const GoogleAdsService = require('./src/modules/google-ads/service');
     const googleAdsService = new GoogleAdsService();
-    const authStatus = googleAdsService.getAuthStatus();
     
-    res.json({
-      status: 'OK',
-      googleAds: authStatus,
-      timestamp: new Date().toISOString()
-    });
+    try {
+      const authStatus = googleAdsService.getAuthStatus();
+      
+      res.json({
+        status: 'OK',
+        googleAds: authStatus,
+        timestamp: new Date().toISOString()
+      });
+    } catch (serviceError) {
+      console.log('⚠️  Google Ads service error:', serviceError.message);
+      res.json({
+        status: 'OK',
+        googleAds: {
+          authenticated: false,
+          error: serviceError.message
+        },
+        timestamp: new Date().toISOString()
+      });
+    }
   } catch (error) {
+    console.error('❌ Error in Google Ads status endpoint:', error);
     res.status(500).json({
       status: 'ERROR',
       error: error.message,
@@ -72,19 +90,35 @@ app.use((err, req, res, next) => {
 // Start server
 const startServer = async () => {
   try {
-    // Initialize Google Ads authentication only
-    try {
-      const GoogleAdsService = require('./src/modules/google-ads/service');
-      const googleAdsService = new GoogleAdsService();
-      const authInitialized = await googleAdsService.initialize();
-      
-      if (authInitialized) {
-        console.log('✅ Google Ads authentication initialized successfully');
-      } else {
-        console.log('⚠️  Google Ads authentication failed - some features may not work');
+    // Initialize Google Ads authentication only if not skipped
+    if (process.env.SKIP_GOOGLE_ADS_API !== 'true') {
+      try {
+        const GoogleAdsService = require('./src/modules/google-ads/service');
+        const googleAdsService = new GoogleAdsService();
+        
+        // Check if initialize method exists before calling it
+        if (typeof googleAdsService.initialize === 'function') {
+          try {
+            const authInitialized = await googleAdsService.initialize();
+            
+            if (authInitialized) {
+              console.log('✅ Google Ads authentication initialized successfully');
+            } else {
+              console.log('⚠️  Google Ads authentication failed - some features may not work');
+            }
+          } catch (initError) {
+            console.log('⚠️  Google Ads authentication failed:', initError.message);
+            console.log('📝 This is expected if Google Ads credentials are not configured');
+          }
+        } else {
+          console.log('⚠️  Google Ads authentication skipped - initialize method not available');
+        }
+      } catch (error) {
+        console.log('⚠️  Google Ads authentication skipped:', error.message);
+        console.log('📝 This is expected if Google Ads credentials are not configured');
       }
-    } catch (error) {
-      console.log('⚠️  Google Ads authentication skipped:', error.message);
+    } else {
+      console.log('🟡 Skipping Google Ads initialization due to SKIP_GOOGLE_ADS_API flag.');
     }
 
     const server = app.listen(PORT, () => {
@@ -94,7 +128,10 @@ const startServer = async () => {
       
       if (process.env.NODE_ENV === 'development') {
         console.log('🔧 Development mode enabled');
-        console.log('🔐 Google Ads Status: http://localhost:3000/api/v1/google-ads/status');
+        console.log('🔐 Google Ads Status: http://localhost:3001/api/v1/google-ads/status');
+        console.log('📊 Dashboard KPIs: http://localhost:3001/api/v1/dashboard/kpis');
+        console.log('📈 Tracker Script: http://localhost:3001/api/v1/tracker/script');
+        console.log('🧪 Tracker Test: http://localhost:3001/api/v1/tracker/test');
       }
     });
 

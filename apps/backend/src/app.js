@@ -14,9 +14,10 @@ app.use(helmet({
     },
   },
 }));
+// Allow all origins for public tracking endpoints
 app.use(cors({
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  credentials: true
+  origin: '*',
+  credentials: false
 }));
 
 // Body parsing middleware
@@ -25,7 +26,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Register module routes
 const googleAdsRoutes = require('./modules/google-ads/routes');
+const trackerRoutes = require('./modules/tracker/routes');
+
 app.use('/api/v1/google-ads', googleAdsRoutes);
+app.use('/api/v1/tracker', trackerRoutes);
 
 // Health check endpoint
 app.get('/health', (req, res) => {

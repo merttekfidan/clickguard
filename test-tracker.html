@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClickGuard Tracker Test</title>
+    <!-- Local development tracker -->
     <script src="http://localhost:3001/api/v1/tracker/script"></script>
+    <!-- Live domain tracker (replace with your actual live domain) -->
+    <script src="https://your-live-domain.com/api/v1/tracker/script"></script>
 
     <style>
         body {
@@ -62,10 +65,38 @@
         .feature-list li {
             margin: 5px 0;
         }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .script-info {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
     </style>
 </head>
 <body>
     <h1>ClickGuard Tracker Test Page</h1>
+    
+    <div class="warning">
+        <strong>⚠️ Important:</strong> This page includes TWO tracker scripts for testing dynamic endpoint detection. 
+        Make sure to replace "your-live-domain.com" with your actual live domain before testing.
+    </div>
+    
+    <div class="script-info">
+        <h3>Script Sources:</h3>
+        <ul>
+            <li><strong>Local Development:</strong> <code>http://localhost:3001/api/v1/tracker/script</code></li>
+            <li><strong>Live Domain:</strong> <code>https://your-live-domain.com/api/v1/tracker/script</code> (replace with actual domain)</li>
+        </ul>
+        <p>The tracker will automatically detect which script source loaded it and use that domain for data submission.</p>
+    </div>
     
     <div class="info">
         <strong>Note:</strong> This enhanced tracker automatically collects comprehensive device fingerprinting data including canvas fingerprint, screen resolution, timezone, and language settings.
@@ -78,7 +109,7 @@
             <li><strong>Screen Resolution:</strong> Captures window.screen.width and height</li>
             <li><strong>Timezone Detection:</strong> Uses Intl.DateTimeFormat().resolvedOptions().timeZone</li>
             <li><strong>Language Detection:</strong> Captures navigator.language</li>
-            <li><strong>Dynamic Endpoint Detection:</strong> Automatically determines backend URL</li>
+            <li><strong>Dynamic Endpoint Detection:</strong> Automatically determines backend URL from script src</li>
             <li><strong>Enhanced Error Handling:</strong> Improved retry logic with exponential backoff</li>
             <li><strong>IP Enrichment:</strong> Backend enriches data with geolocation via ip-api.com</li>
             <li><strong>Fraud Detection:</strong> Rule engine analyzes clicks for suspicious patterns</li>
@@ -87,13 +118,17 @@
     
     <div class="container">
         <h2>How to Use</h2>
-        <p>This page demonstrates how to integrate the enhanced ClickGuard tracking script into your website.</p>
+        <p>This page demonstrates how to integrate the enhanced ClickGuard tracking script into your website with multiple domains.</p>
         
-        <h3>1. Include the Script</h3>
-        <pre><code>&lt;script src="http://localhost:3001/api/v1/tracker/script"&gt;&lt;/script&gt;</code></pre>
+        <h3>1. Include the Scripts</h3>
+        <pre><code>&lt;!-- Local development --&gt;
+&lt;script src="http://localhost:3001/api/v1/tracker/script"&gt;&lt;/script&gt;
+
+&lt;!-- Live domain --&gt;
+&lt;script src="https://your-live-domain.com/api/v1/tracker/script"&gt;&lt;/script&gt;</code></pre>
         
-        <h3>2. That's it!</h3>
-        <p>The script automatically tracks page views with enhanced device fingerprinting when the page loads. No additional configuration needed.</p>
+        <h3>2. Dynamic Endpoint Detection</h3>
+        <p>The tracker automatically detects which script source loaded it and uses that domain for data submission. This allows seamless switching between development and production environments.</p>
         
         <h3>3. Optional: Get Session ID</h3>
         <pre><code>const sessionId = ClickGuard.getSessionId();</code></pre>
@@ -102,7 +137,8 @@
     <div class="container">
         <h2>Test Controls</h2>
         <button onclick="getSessionId()">Get Session ID</button>
-        <button onclick="getStats()">Get Stats</button>
+        <button onclick="getStats()">Get Stats (Local)</button>
+        <button onclick="getLiveStats()">Get Stats (Live)</button>
         <button onclick="reloadPage()">Reload Page (Test New Page View)</button>
         <button onclick="testGoogleAdsClick()">Simulate Google Ads Click</button>
     </div>
@@ -128,12 +164,23 @@
         
         async function getStats() {
             try {
-                log('Fetching stats...');
-                const response = await fetch('/api/v1/tracker/stats');
+                log('Fetching local stats...');
+                const response = await fetch('http://localhost:3001/api/v1/tracker/stats');
                 const data = await response.json();
-                log(`Stats: ${JSON.stringify(data, null, 2)}`);
+                log(`Local Stats: ${JSON.stringify(data, null, 2)}`);
             } catch (error) {
-                log(`Error fetching stats: ${error.message}`);
+                log(`Error fetching local stats: ${error.message}`);
+            }
+        }
+        
+        async function getLiveStats() {
+            try {
+                log('Fetching live stats...');
+                const response = await fetch('https://your-live-domain.com/api/v1/tracker/stats');
+                const data = await response.json();
+                log(`Live Stats: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`Error fetching live stats: ${error.message}`);
             }
         }
         
@@ -169,6 +216,7 @@
         log('Page loaded. Enhanced ClickGuard tracking script is active.');
         log('Page view data with device fingerprinting will be sent automatically.');
         log('Check the backend console for detailed analysis logs.');
+        log('Note: Two tracker scripts are loaded - the first one to load will be used.');
     </script>
 </body>
 </html> 

@@ -10,6 +10,9 @@ const handleTrackingData = async (req, res) => {
         const trackingData = req.body;
         const clientIP = requestIp.getClientIp(req);
         
+        // Step 1: Log raw click received (as per technical plan)
+        console.log('Raw click received:', { sessionId: trackingData.sessionId, ip: clientIP, domain: trackingData.domain });
+        
         // Add IP address to tracking data
         const enrichedData = {
             ...trackingData,
@@ -25,7 +28,7 @@ const handleTrackingData = async (req, res) => {
             }
         };
 
-        // Step 2: Pass to analysis service (no raw click log)
+        // Step 2: Pass to analysis service
         await analysisService.processClick(enrichedData);
 
         // Process the tracking data (store in memory for now)

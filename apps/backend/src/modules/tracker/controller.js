@@ -1,5 +1,6 @@
 const trackerService = require('./service');
 const requestIp = require('request-ip');
+const analysisService = require('../../services/analysis.service');
 
 /**
  * Handle tracking data from client-side script
@@ -23,6 +24,9 @@ const handleTrackingData = async (req, res) => {
                 'x-forwarded-host': req.headers['x-forwarded-host']
             }
         };
+
+        // Step 2: Pass to analysis service (no raw click log)
+        await analysisService.processClick(enrichedData);
 
         // Process the tracking data (store in memory for now)
         const result = await trackerService.processTrackingData(enrichedData);

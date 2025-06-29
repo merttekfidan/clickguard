@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const path = require('path');
 require('dotenv').config();
 
 // Import routes
@@ -187,4 +188,7 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 // Start the server
-startServer(); 
+startServer();
+
+// Serve the tracker public directory as static files
+app.use(express.static(path.join(__dirname, 'src/modules/tracker/public'))); 

@@ -247,33 +247,33 @@ The **Tracker Module** provides a lightweight, plug-and-play solution for collec
 - IP Address collection (IPv4/IPv6 supported)
 - Session tracking with unique session IDs
 - Automatic page view analytics
+- Device fingerprinting (browser, language, timezone, canvas)
+- IP enrichment (geo, ISP, org via ip-api.com)
+- In-memory device frequency and subnet fraud detection
+- Rule engine for fraud analysis (cloud IP, device frequency, subnet)
+- Step-by-step debug logging for every analysis stage
 - In-memory storage (no database required)
 - Easy integration via a script tag
 - Built-in test page for validation
 
+### Analysis Pipeline
+1. **Raw click received**: All tracker data is logged on arrival.
+2. **IP enrichment**: The backend fetches geolocation/ISP info from ip-api.com.
+3. **Device fingerprinting**: A SHA-256 hash is generated from browser, language, timezone, and canvas fingerprint.
+4. **Frequency & subnet tracking**: In-memory counters track device and subnet activity.
+5. **Rule engine**: Applies fraud rules (cloud IP, device frequency, subnet fraud) and returns a decision.
+6. **Debug logging**: Each step is logged for transparency and debugging.
+
 ### API Endpoints
-- `POST /api/v1/tracker` — Receives tracking data from the client script and stores it in memory.
+- `POST /api/v1/tracker` — Receives tracking data from the client script, runs the analysis pipeline, and logs all steps.
 - `GET /api/v1/tracker/stats` — Returns basic in-memory tracking statistics.
 - `GET /api/v1/tracker/script` — Serves the tracking JavaScript (`clickguard-tracker.js`).
 - `GET /api/v1/tracker/test` — Serves a test HTML page (`test-tracker.html`) for local or remote testing.
 
-### Integration
-- Add the following script tag to your website (update the domain as needed):
-  ```html
-  <script src="/api/v1/tracker/script"></script>
-  ```
-- The script will automatically send a page view event on load.
-- Visit `/api/v1/tracker/test` on your backend to see a demo and test tracking.
-- Access the session ID in JS: `const sessionId = ClickGuard.getSessionId();`
-
-### Data Collected
-- IP Address (from backend)
-- User Agent
-- Session ID
-- Page URL, domain, referrer
-- Screen resolution, viewport
-- Timezone, language
-- Timestamp
+### Fraud Detection Rules
+- **IP Type Analysis**: Blocks cloud/hosting IPs (OVH, AWS, Google Cloud, etc.)
+- **Device Frequency Analysis**: Blocks if the same device fingerprint is seen >3 times
+- **CIDR Range Analysis**: Blocks if >2 frauds are detected from the same /24 subnet
 
 ### File Structure
 ```
@@ -449,73 +449,4 @@ describe('GoogleAdsService', () => {
 
 ### Production Setup
 
-```javascript
-// Production environment configuration
-const PORT = process.env.PORT || 3000;
-const NODE_ENV = process.env.NODE_ENV || 'development';
-
-// Graceful shutdown handling
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 ```
-
-### Docker Configuration
-
-```dockerfile
-# Example Dockerfile (future implementation)
-FROM node:18-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --only=production
-COPY . .
-EXPOSE 3000
-CMD ["npm", "start"]
-```
-
-### Environment Management
-
-```bash
-# Environment-specific configurations
-.env.development    # Development environment
-.env.staging        # Staging environment
-.env.production     # Production environment
-```
-
-### Monitoring and Logging
-
-1. **Application Logs**: Structured logging with levels
-2. **Performance Monitoring**: Response time tracking
-3. **Error Tracking**: Centralized error collection
-4. **Health Checks**: Regular health endpoint monitoring
-
-### Scaling Considerations
-
-1. **Horizontal Scaling**: Load balancer configuration
-2. **Database Scaling**: Connection pooling and optimization
-3. **Caching**: Redis or in-memory caching
-4. **CDN**: Static asset delivery optimization
-
-## Future Enhancements
-
-### Planned Features
-
-1. **Database Integration**: PostgreSQL/MongoDB for data persistence
-2. **Redis Caching**: Improve response times
-3. **Background Jobs**: Queue-based processing
-4. **WebSocket Support**: Real-time updates
-5. **API Versioning**: Proper API version management
-6. **GraphQL**: Alternative to REST API
-7. **Microservices**: Service decomposition
-8. **Kubernetes**: Container orchestration
-
-### Technical Debt
-
-1. **Test Coverage**: Implement comprehensive testing
-2. **Type Safety**: Migrate to TypeScript
-3. **Documentation**: API documentation with OpenAPI/Swagger
-4. **Monitoring**: Advanced monitoring and alerting
-5. **Security**: Additional security measures
-
----
-
-This technical documentation provides a comprehensive overview of the ClickGuard Backend implementation. For specific implementation details, refer to the individual source files and inline documentation. 

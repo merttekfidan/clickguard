@@ -8,9 +8,23 @@ A lightweight, plug-and-play tracking solution for collecting user IP, session, 
 - **IP Address Collection**: Captures real client IPs (IPv4/IPv6 supported)
 - **Session Tracking**: Unique session IDs per user
 - **Page View Analytics**: Tracks page views automatically
+- **Device Fingerprinting**: Combines browser, language, timezone, and canvas fingerprint for robust identification
+- **IP Enrichment**: Uses ip-api.com to enrich click data with geolocation and ISP info
+- **Fraud Detection Rules**: In-memory device frequency, IP type, and subnet analysis
 - **In-Memory Storage**: No database required for basic analytics
 - **Easy Integration**: Just add a script tag to your site
 - **Test Page**: Built-in test page for quick validation
+- **Step-by-Step Debug Logging**: Console logs for every analysis step
+
+---
+
+## Analysis Pipeline
+1. **Raw click received**: All tracker data is logged on arrival.
+2. **IP enrichment**: The backend fetches geolocation/ISP info from ip-api.com.
+3. **Device fingerprinting**: A SHA-256 hash is generated from browser, language, timezone, and canvas fingerprint.
+4. **Frequency & subnet tracking**: In-memory counters track device and subnet activity.
+5. **Rule engine**: Applies fraud rules (cloud IP, device frequency, subnet fraud) and returns a decision.
+6. **Debug logging**: Each step is logged for transparency and debugging.
 
 ---
 
@@ -18,7 +32,7 @@ A lightweight, plug-and-play tracking solution for collecting user IP, session, 
 
 ### `POST /api/v1/tracker`
 - Receives tracking data from the client script.
-- Stores data in memory (see `service.js`).
+- Runs the full analysis pipeline and logs all steps.
 - Returns `{ success, sessionId, timestamp, ipAddress }`.
 
 ### `GET /api/v1/tracker/stats`
@@ -65,7 +79,17 @@ const sessionId = ClickGuard.getSessionId();
 - Page URL, domain, referrer
 - Screen resolution, viewport
 - Timezone, language
+- Canvas fingerprint
+- Device fingerprint (SHA-256 hash)
+- IP enrichment (geo, ISP, org)
 - Timestamp
+
+---
+
+## Fraud Detection Rules
+- **IP Type Analysis**: Blocks cloud/hosting IPs (OVH, AWS, Google Cloud, etc.)
+- **Device Frequency Analysis**: Blocks if the same device fingerprint is seen >3 times
+- **CIDR Range Analysis**: Blocks if >2 frauds are detected from the same /24 subnet
 
 ---
 
@@ -86,7 +110,7 @@ modules/tracker/
 
 ## Tracking Script: `clickguard-tracker.js`
 - Loads automatically when included via `<script src=...>`
-- Sends a POST to `/api/v1/tracker` with session, page, and browser info
+- Sends a POST to `/api/v1/tracker` with session, page, browser info, and canvas fingerprint
 - Exposes `ClickGuard.getSessionId()` for custom use
 - Designed for cross-origin and production use (CORS must be enabled on backend)
 

@@ -12,9 +12,25 @@ console.log('TEST: clickguard-tracker.js loaded');
     'use strict';
     console.debug('[DEBUG 1] IIFE started');
     
-    // Configuration
+    // Dynamically determine the backend endpoint based on the script src
+    const scriptTag = document.currentScript || document.querySelector('script[src*="tracker/script"]');
+    let backendOrigin = '';
+    if (scriptTag) {
+        try {
+            const url = new URL(scriptTag.src, window.location.origin);
+            backendOrigin = url.origin;
+        } catch (e) {
+            backendOrigin = window.location.origin;
+        }
+    } else {
+        backendOrigin = window.location.origin;
+    }
+    // Fallback for local file testing
+    if (window.location.protocol === 'file:' || window.location.hostname === '') {
+        backendOrigin = 'http://localhost:3001';
+    }
     const CONFIG = {
-        endpoint: 'https://0e7f-185-221-26-3.ngrok-free.app/api/v1/tracker',
+        endpoint: backendOrigin + '/api/v1/tracker',
         timeout: 5000,
         retryAttempts: 3,
         retryDelay: 1000
@@ -48,8 +64,33 @@ console.log('TEST: clickguard-tracker.js loaded');
         return sessionId;
     };
     
-    // Collect user data
-    const collectUserData = () => {
+    // SHA-256 hash function (browser native)
+    async function sha256(str) {
+        const buf = new TextEncoder().encode(str);
+        const hashBuffer = await crypto.subtle.digest('SHA-256', buf);
+        return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    // Canvas fingerprinting
+    async function getCanvasFingerprint() {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        ctx.textBaseline = 'top';
+        ctx.font = '14px Arial';
+        ctx.textBaseline = 'alphabetic';
+        ctx.fillStyle = '#f60';
+        ctx.fillRect(125,1,62,20);
+        ctx.fillStyle = '#069';
+        ctx.fillText('ClickGuard', 2, 15);
+        ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+        ctx.fillText('ClickGuard', 4, 17);
+        const dataUrl = canvas.toDataURL();
+        return await sha256(dataUrl);
+    }
+    
+    // Enhanced collectUserData
+    const collectUserData = async () => {
+        const canvasFingerprint = await getCanvasFingerprint();
         const data = {
             sessionId: getSessionId(),
             timestamp: new Date().toISOString(),
@@ -57,8 +98,8 @@ console.log('TEST: clickguard-tracker.js loaded');
             language: navigator.language || navigator.userLanguage,
             timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
             screenResolution: {
-                width: screen.width,
-                height: screen.height
+                width: window.screen.width,
+                height: window.screen.height
             },
             viewport: {
                 width: window.innerWidth,
@@ -69,7 +110,8 @@ console.log('TEST: clickguard-tracker.js loaded');
             domain: window.location.hostname,
             path: window.location.pathname,
             query: window.location.search,
-            hash: window.location.hash
+            hash: window.location.hash,
+            canvasFingerprint
         };
         console.debug('[DEBUG 7] Collected user data:', data);
         return data;
@@ -115,28 +157,24 @@ console.log('TEST: clickguard-tracker.js loaded');
     };
     
     // Track page view (only once per page load)
-    const trackPageView = () => {
-        // Don't track if we're on the script endpoint itself
+    const trackPageView = async () => {
         if (isScriptEndpoint) {
             console.debug('[DEBUG 13] Skipping tracking on script endpoint');
             return;
         }
-        
         if (hasTracked) {
             console.debug('[DEBUG 14] Page already tracked, skipping...');
             return;
         }
-        
         hasTracked = true;
         console.debug('[DEBUG 15] Starting page view tracking...');
-        const userData = collectUserData();
+        const userData = await collectUserData();
         sendData(userData);
     };
     
     // Initialize tracking
     const init = () => {
         console.debug('[DEBUG 16] Initializing...');
-        // Only track the initial page view
         trackPageView();
         console.debug('[DEBUG 17] Page view tracking initialized');
     };

@@ -87,17 +87,18 @@ async function processClick(rawData) {
     const color = result.decision === 'BLOCK' ? 'red' : 'green';
     const summary = `[${colorText(result.decision, color)}] session=${enrichedClick.sessionId} ip=${enrichedClick.ipAddress} domain=${enrichedClick.domain} url=${enrichedClick.path} reason=${result.reason}`;
     console.log(summary);
-    // Only log details if BLOCKED
-    if (result.decision === 'BLOCK') {
+    // Only log details if BLOCKED or (temporarily) if ALLOWED (for debugging)
+    if (result.decision === 'BLOCK' || result.decision === 'ALLOW') {
         // Only show ipAddress, ipInfo, block reason, and proxy/hosting fields
         const { ipAddress } = enrichedClick;
         const { proxy, hosting, mobile, isp, org, country, regionName, city, query } = ipInfo || {};
-        const blockDetails = {
+        const details = {
             ipAddress,
             ipInfo: { isp, org, country, regionName, city, query, proxy, hosting, mobile },
             reason: result.reason
         };
-        console.warn(colorText('Blocked click details:', 'red'), blockDetails);
+        const logColor = result.decision === 'BLOCK' ? 'red' : 'green';
+        console.warn(colorText(`${result.decision} click details:`, logColor), details);
     }
     return { enrichedClick, result };
 }

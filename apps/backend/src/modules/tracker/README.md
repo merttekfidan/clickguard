@@ -52,12 +52,10 @@ A lightweight, plug-and-play tracking solution for collecting user IP, session, 
 ### 1. **Include the Tracking Script**
 Add this to your website (update the domain as needed):
 ```html
-<script src="/api/v1/tracker/script"></script>
+<script src="https://your-backend.com/api/v1/tracker/script"></script>
 ```
-Or, for remote/local testing:
-```html
-<script src="http://YOUR-BACKEND-DOMAIN:PORT/api/v1/tracker/script"></script>
-```
+
+**The script is universal:** It automatically detects the backend endpoint from its own src URL. No manual endpoint configuration is needed.
 
 ### 2. **Automatic Page View Tracking**
 The script will automatically send a page view event on load. No extra code needed.
@@ -110,6 +108,7 @@ modules/tracker/
 
 ## Tracking Script: `clickguard-tracker.js`
 - Loads automatically when included via `<script src=...>`
+- **Dynamically detects the backend endpoint** based on its own src URL (no config needed)
 - Sends a POST to `/api/v1/tracker` with session, page, browser info, and canvas fingerprint
 - Exposes `ClickGuard.getSessionId()` for custom use
 - Designed for cross-origin and production use (CORS must be enabled on backend)

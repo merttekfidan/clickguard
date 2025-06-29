@@ -459,8 +459,7 @@ private-keys/
 
 # Public keys
 public-keys/
-public
-*.pub
+
 
 # ClickGuard specific
 **/client_secret.json

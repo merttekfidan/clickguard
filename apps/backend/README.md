@@ -446,4 +446,14 @@ pm2 startup
 
 For any issues, see the code comments or contact the maintainer.
 
-**ClickGuard Backend** - Secure, scalable, and reliable Google Ads API integration for click fraud detection. 
+**ClickGuard Backend** - Secure, scalable, and reliable Google Ads API integration for click fraud detection.
+
+## Tracker Integration
+
+To enable tracking on your website, simply add:
+
+```html
+<script src="https://your-backend.com/api/v1/tracker/script"></script>
+```
+
+**Note:** The tracker script now dynamically detects the backend endpoint based on its own src URL. No manual endpoint configuration is required. You can use the same script tag on any site, and it will always POST to the correct backend. 

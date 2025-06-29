@@ -16,6 +16,30 @@ const allowedISPs = [
   "Netia S.A."
 ];
 
+// Google Ads detection patterns
+const GOOGLE_ADS_PATTERNS = {
+  referrers: [
+    'google.com',
+    'googleadservices.com',
+    'googlesyndication.com',
+    'doubleclick.net',
+    'google-analytics.com'
+  ],
+  queryParams: [
+    'gclid',      // Google Click ID
+    'gclsrc',     // Google Click Source
+    'dclid',      // Display Click ID
+    'fbclid',     // Facebook Click ID
+    'msclkid',    // Microsoft Click ID
+    'ttclid'      // TikTok Click ID
+  ],
+  domains: [
+    'google.com',
+    'googleadservices.com',
+    'googlesyndication.com'
+  ]
+};
+
 function isLocalDevelopmentIP(ipAddress) {
   if (!ipAddress) return false;
   
@@ -49,7 +73,40 @@ function isAllowedISP(ipInfo) {
 function isGoogleAdsClick(enrichedClick) {
     const ref = (enrichedClick.referrer || '').toLowerCase();
     const query = (enrichedClick.query || '').toLowerCase();
-    return ref.includes('google.com') || ref.includes('googleadservices.com') || query.includes('gclid=');
+    const url = (enrichedClick.url || '').toLowerCase();
+    const domain = (enrichedClick.domain || '').toLowerCase();
+    
+    // Check referrer patterns
+    const hasGoogleReferrer = GOOGLE_ADS_PATTERNS.referrers.some(pattern => 
+        ref.includes(pattern)
+    );
+    
+    // Check query parameters (gclid, etc.)
+    const hasClickId = GOOGLE_ADS_PATTERNS.queryParams.some(param => 
+        query.includes(param + '=') || url.includes(param + '=')
+    );
+    
+    // Check domain patterns
+    const hasGoogleDomain = GOOGLE_ADS_PATTERNS.domains.some(pattern => 
+        domain.includes(pattern)
+    );
+    
+    return hasGoogleReferrer || hasClickId || hasGoogleDomain;
+}
+
+function extractClickId(enrichedClick) {
+    const query = (enrichedClick.query || '').toLowerCase();
+    const url = (enrichedClick.url || '').toLowerCase();
+    
+    for (const param of GOOGLE_ADS_PATTERNS.queryParams) {
+        const pattern = new RegExp(`${param}=([^&]+)`, 'i');
+        const match = query.match(pattern) || url.match(pattern);
+        if (match) {
+            return { type: param, value: match[1] };
+        }
+    }
+    
+    return null;
 }
 
 function runRules(enrichedClick, contextData) {
@@ -77,32 +134,105 @@ function runRules(enrichedClick, contextData) {
         };
     }
 
-    // Rule #2: Device Frequency Analysis (Google Ads only)
+    // Rule #2: Google Ads Click Analysis (Enhanced)
     if (isGoogleAdsClick(enrichedClick)) {
+        const clickId = extractClickId(enrichedClick);
         const googleAdsCount = contextData.googleAdsClickCount || 0;
-        console.debug('Rule #2: Google Ads Device Frequency Analysis', { googleAdsCount });
-        if (googleAdsCount > 3) {
-            console.debug('Rule #2 triggered: BLOCK (Google Ads repeated clicks)', { fingerprint: enrichedClick.deviceFingerprint, googleAdsCount });
+        const fingerprintCount = contextData.fingerprintCount || 0;
+        
+        console.debug('Rule #2: Google Ads Click Analysis', { 
+            googleAdsCount, 
+            fingerprintCount, 
+            clickId,
+            referrer: enrichedClick.referrer,
+            query: enrichedClick.query
+        });
+        
+        // Stricter rules for Google Ads clicks
+        if (googleAdsCount > 2) { // Reduced threshold from 3 to 2
+            console.debug('Rule #2a triggered: BLOCK (Google Ads repeated clicks)', { 
+                fingerprint: enrichedClick.deviceFingerprint, 
+                googleAdsCount 
+            });
             return {
                 decision: 'BLOCK',
                 reason: 'FRAUD_GOOGLE_ADS_FREQUENCY',
-                target: enrichedClick.deviceFingerprint
+                target: enrichedClick.deviceFingerprint,
+                details: { googleAdsCount, clickId }
             };
         }
+        
+        // Block if same device has too many total clicks (even if not all are Google Ads)
+        if (fingerprintCount > 5) {
+            console.debug('Rule #2b triggered: BLOCK (High device frequency)', { 
+                fingerprint: enrichedClick.deviceFingerprint, 
+                fingerprintCount 
+            });
+            return {
+                decision: 'BLOCK',
+                reason: 'FRAUD_DEVICE_FREQUENCY',
+                target: enrichedClick.deviceFingerprint,
+                details: { fingerprintCount, googleAdsCount, clickId }
+            };
+        }
+        
+        // Block suspicious Google Ads patterns
+        if (clickId && (googleAdsCount > 1 || fingerprintCount > 3)) {
+            console.debug('Rule #2c triggered: BLOCK (Suspicious Google Ads pattern)', { 
+                clickId, 
+                googleAdsCount, 
+                fingerprintCount 
+            });
+            return {
+                decision: 'BLOCK',
+                reason: 'FRAUD_GOOGLE_ADS_SUSPICIOUS',
+                target: enrichedClick.deviceFingerprint,
+                details: { clickId, googleAdsCount, fingerprintCount }
+            };
+        }
+        
+        console.debug('Rule #2: Google Ads click allowed', { googleAdsCount, fingerprintCount, clickId });
     } else {
-        // For non-Google Ads clicks, always allow (no device frequency block)
-        console.debug('Rule #2: Skipped for non-Google Ads click');
+        // For non-Google Ads clicks, apply standard frequency rules
+        const fingerprintCount = contextData.fingerprintCount || 0;
+        if (fingerprintCount > 10) { // Higher threshold for non-Google Ads
+            console.debug('Rule #2d triggered: BLOCK (High non-Google Ads frequency)', { 
+                fingerprint: enrichedClick.deviceFingerprint, 
+                fingerprintCount 
+            });
+            return {
+                decision: 'BLOCK',
+                reason: 'FRAUD_DEVICE_FREQUENCY',
+                target: enrichedClick.deviceFingerprint,
+                details: { fingerprintCount }
+            };
+        }
+        console.debug('Rule #2: Non-Google Ads click allowed', { fingerprintCount });
     }
 
-    // Rule #3: CIDR Range Analysis
+    // Rule #3: CIDR Range Analysis (Enhanced for Google Ads)
     const subnetFraudCount = contextData.subnetFraudCount || 0;
-    console.debug('Rule #3: CIDR Range Analysis', { subnet: contextData.subnet, subnetFraudCount });
-    if (subnetFraudCount > 2) {
-        console.debug('Rule #3 triggered: BLOCK', { subnet: contextData.subnet, subnetFraudCount });
+    const isGoogleAds = isGoogleAdsClick(enrichedClick);
+    const subnetThreshold = isGoogleAds ? 1 : 2; // Lower threshold for Google Ads
+    
+    console.debug('Rule #3: CIDR Range Analysis', { 
+        subnet: contextData.subnet, 
+        subnetFraudCount, 
+        isGoogleAds, 
+        threshold: subnetThreshold 
+    });
+    
+    if (subnetFraudCount >= subnetThreshold) {
+        console.debug('Rule #3 triggered: BLOCK', { 
+            subnet: contextData.subnet, 
+            subnetFraudCount, 
+            threshold: subnetThreshold 
+        });
         return {
             decision: 'BLOCK',
             reason: 'FRAUD_CIDR_RANGE',
-            target: contextData.subnet
+            target: contextData.subnet,
+            details: { subnetFraudCount, threshold: subnetThreshold, isGoogleAds }
         };
     }
 

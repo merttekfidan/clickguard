@@ -15,6 +15,9 @@ router.get('/clicks', controller.getRecentClicks);
 // GET /api/v1/tracker/clicks/:clickId - Get specific click details
 router.get('/clicks/:clickId', controller.getClickDetails);
 
+// GET /api/v1/tracker/google-ads-stats - Get Google Ads statistics
+router.get('/google-ads-stats', controller.getGoogleAdsStats);
+
 // GET /api/v1/tracker/script - Serve the tracking script with CORS headers
 router.get('/script', (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');

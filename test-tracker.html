@@ -141,6 +141,7 @@
         <button onclick="getLiveStats()">Get Stats (Live)</button>
         <button onclick="getRecentClicks()">Get Recent Clicks</button>
         <button onclick="getBlockedClicks()">Get Blocked Clicks</button>
+        <button onclick="getGoogleAdsStats()">Get Google Ads Stats</button>
         <button onclick="reloadPage()">Reload Page (Test New Page View)</button>
         <button onclick="testGoogleAdsClick()">Simulate Google Ads Click</button>
     </div>
@@ -205,6 +206,17 @@
                 log(`Blocked Clicks: ${JSON.stringify(data, null, 2)}`);
             } catch (error) {
                 log(`Error fetching blocked clicks: ${error.message}`);
+            }
+        }
+        
+        async function getGoogleAdsStats() {
+            try {
+                log('Fetching Google Ads stats...');
+                const response = await fetch('http://localhost:3001/api/v1/tracker/google-ads-stats');
+                const data = await response.json();
+                log(`Google Ads Stats: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`Error fetching Google Ads stats: ${error.message}`);
             }
         }
         

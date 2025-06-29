@@ -138,9 +138,29 @@ const getClickDetails = async (req, res) => {
     }
 };
 
+/**
+ * Get Google Ads statistics
+ */
+const getGoogleAdsStats = async (req, res) => {
+    try {
+        const stats = analysisService.getGoogleAdsStats();
+        res.status(200).json({
+            success: true,
+            data: stats
+        });
+    } catch (error) {
+        console.error('Error getting Google Ads stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+};
+
 module.exports = {
     handleTrackingData,
     getTrackingStats,
     getRecentClicks,
-    getClickDetails
+    getClickDetails,
+    getGoogleAdsStats
 }; 

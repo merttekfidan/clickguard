@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ClickGuard Tracker Test</title>
     <script src="http://localhost:3001/api/v1/tracker/script"></script>
-    <!--<script src="clickguard-tracker.js"></script>-->æ
 
     <style>
         body {
@@ -49,25 +48,52 @@
             border-radius: 4px;
             margin: 20px 0;
         }
+        .feature-list {
+            background: #f0f8ff;
+            border: 1px solid #add8e6;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .feature-list ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        .feature-list li {
+            margin: 5px 0;
+        }
     </style>
 </head>
 <body>
     <h1>ClickGuard Tracker Test Page</h1>
     
     <div class="info">
-        <strong>Note:</strong> This simplified tracker only sends data once when the page loads. 
-        It tracks the initial page view and collects IP/user data automatically.
+        <strong>Note:</strong> This enhanced tracker automatically collects comprehensive device fingerprinting data including canvas fingerprint, screen resolution, timezone, and language settings.
+    </div>
+    
+    <div class="feature-list">
+        <h3>Enhanced Features Implemented:</h3>
+        <ul>
+            <li><strong>Canvas Fingerprinting:</strong> Unique device identification via canvas rendering</li>
+            <li><strong>Screen Resolution:</strong> Captures window.screen.width and height</li>
+            <li><strong>Timezone Detection:</strong> Uses Intl.DateTimeFormat().resolvedOptions().timeZone</li>
+            <li><strong>Language Detection:</strong> Captures navigator.language</li>
+            <li><strong>Dynamic Endpoint Detection:</strong> Automatically determines backend URL</li>
+            <li><strong>Enhanced Error Handling:</strong> Improved retry logic with exponential backoff</li>
+            <li><strong>IP Enrichment:</strong> Backend enriches data with geolocation via ip-api.com</li>
+            <li><strong>Fraud Detection:</strong> Rule engine analyzes clicks for suspicious patterns</li>
+        </ul>
     </div>
     
     <div class="container">
         <h2>How to Use</h2>
-        <p>This page demonstrates how to integrate the ClickGuard tracking script into your website.</p>
+        <p>This page demonstrates how to integrate the enhanced ClickGuard tracking script into your website.</p>
         
         <h3>1. Include the Script</h3>
         <pre><code>&lt;script src="http://localhost:3001/api/v1/tracker/script"&gt;&lt;/script&gt;</code></pre>
         
         <h3>2. That's it!</h3>
-        <p>The script automatically tracks page views when the page loads. No additional configuration needed.</p>
+        <p>The script automatically tracks page views with enhanced device fingerprinting when the page loads. No additional configuration needed.</p>
         
         <h3>3. Optional: Get Session ID</h3>
         <pre><code>const sessionId = ClickGuard.getSessionId();</code></pre>
@@ -78,6 +104,7 @@
         <button onclick="getSessionId()">Get Session ID</button>
         <button onclick="getStats()">Get Stats</button>
         <button onclick="reloadPage()">Reload Page (Test New Page View)</button>
+        <button onclick="testGoogleAdsClick()">Simulate Google Ads Click</button>
     </div>
     
     <div class="container">
@@ -117,6 +144,13 @@
             }, 1000);
         }
         
+        function testGoogleAdsClick() {
+            log('Simulating Google Ads click with gclid parameter...');
+            const currentUrl = new URL(window.location.href);
+            currentUrl.searchParams.set('gclid', 'test_gclid_' + Date.now());
+            window.location.href = currentUrl.toString();
+        }
+        
         let isLogging = false;
         const originalLog = console.log;
         console.log = function(...args) {
@@ -132,8 +166,9 @@
         };
         
         // Log when page loads
-        log('Page loaded. ClickGuard tracking script is active.');
-        log('Page view data will be sent automatically.');
+        log('Page loaded. Enhanced ClickGuard tracking script is active.');
+        log('Page view data with device fingerprinting will be sent automatically.');
+        log('Check the backend console for detailed analysis logs.');
     </script>
 </body>
 </html> 

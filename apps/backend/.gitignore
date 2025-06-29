@@ -459,7 +459,7 @@ private-keys/
 
 # Public keys
 public-keys/
-*.public
+public
 *.pub
 
 # ClickGuard specific

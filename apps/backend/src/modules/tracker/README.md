@@ -19,12 +19,12 @@ A lightweight, plug-and-play tracking solution for collecting user IP, session, 
 ---
 
 ## Analysis Pipeline
-1. **Raw click received**: All tracker data is logged on arrival.
+1. **Tracking data received**: All tracker data is processed on arrival.
 2. **IP enrichment**: The backend fetches geolocation/ISP info from ip-api.com.
 3. **Device fingerprinting**: A SHA-256 hash is generated from browser, language, timezone, and canvas fingerprint.
-4. **Frequency & subnet tracking**: In-memory counters track device and subnet activity.
-5. **Rule engine**: Applies fraud rules (cloud IP, device frequency, subnet fraud) and returns a decision.
-6. **Debug logging**: Each step is logged for transparency and debugging.
+4. **Frequency & subnet tracking**: In-memory counters track device and /16 subnet activity.
+5. **Rule engine**: Applies fraud rules (allowlist, device frequency, /16 subnet fraud) and returns a decision.
+6. **Debug logging**: Each step is logged for transparency. Blocked logs show only IP/proxy info, with colored output.
 
 ---
 
@@ -87,9 +87,9 @@ const sessionId = ClickGuard.getSessionId();
 ---
 
 ## Fraud Detection Rules
-- **IP Type Analysis**: Blocks cloud/hosting IPs (OVH, AWS, Google Cloud, etc.)
-- **Device Frequency Analysis**: Blocks if the same device fingerprint is seen >3 times
-- **CIDR Range Analysis**: Blocks if >2 frauds are detected from the same /24 subnet
+- **IP Type Analysis**: Allows only if the ISP/org (from ip-api.com) contains any of the allowed Polish ISP/org names (case-insensitive, substring match)
+- **Device Frequency Analysis**: Blocks if the same device fingerprint is seen >3 times (Google Ads clicks only)
+- **CIDR Range Analysis**: Blocks if >2 frauds are detected from the same /16 subnet
 
 ---
 
@@ -138,4 +138,7 @@ modules/tracker/
 
 ---
 
-For more details, see the code and comments in each file. 
+For more details, see the code and comments in each file.
+
+## Deployment
+See the main backend [README.md](../../README.md) for deployment instructions and best practices. 

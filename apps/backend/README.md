@@ -7,7 +7,10 @@ A robust Node.js backend server for ClickGuard, providing Google Ads API authent
 - **Google Ads API Integration**: Full OAuth2 authentication and API access
 - **Account Management**: Retrieve and manage Google Ads accounts
 - **Real-time Monitoring**: Track account status and connection health
-- **Security**: JWT authentication, rate limiting, and secure credential management
+- **Security & Anti-Fraud**:
+  - Partial-match allowlist for Polish ISPs/orgs (case-insensitive, substring match)
+  - /16 subnet fraud tracking for broader abuse detection
+  - Improved logging: colored output, only relevant IP/proxy info on block, no device details
 - **Scalable Architecture**: Modular design with clear separation of concerns
 - **Development Ready**: Hot reloading, comprehensive logging, and error handling
 
@@ -367,6 +370,78 @@ For support and questions:
 - Check the documentation
 - Review the troubleshooting section
 
+## Deployment Guide
+
+### 1. Prerequisites
+- **Node.js v18+** (v22 recommended)
+- **npm**
+- **git**
+- A Linux server (Ubuntu/Debian recommended) or a Node.js-compatible cloud platform
+
+### 2. Clone the Repository
+```sh
+git clone <your-repo-url>
+cd ClickGuard/apps/backend
+```
+
+### 3. Install Dependencies
+```sh
+npm install
+```
+
+### 4. Configure Environment Variables
+- Copy `.env.example` to `.env`:
+  ```sh
+  cp .env.example .env
+  ```
+- Edit `.env` and set production values for secrets, API keys, and URLs.
+
+### 5. Start the Server (Production)
+- **Recommended:** Use [PM2](https://pm2.keymetrics.io/) to keep your server running and auto-restart on crash/reboot.
+
+```sh
+npm install -g pm2
+pm2 start server.js --name clickguard-backend
+pm2 save
+pm2 startup
+```
+
+### 6. (Optional) Set Up a Reverse Proxy & HTTPS
+- Use [Nginx](https://nginx.org/) or [Caddy](https://caddyserver.com/) to serve your app securely over HTTPS and forward requests to your Node.js server.
+- Example Nginx config:
+  ```nginx
+  server {
+    listen 80;
+    server_name yourdomain.com;
+    location / {
+      proxy_pass http://localhost:3001;
+      proxy_set_header Host $host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header X-Forwarded-Proto $scheme;
+    }
+  }
+  ```
+- Use [Let's Encrypt](https://letsencrypt.org/) for free SSL certificates.
+
+### 7. Security & Best Practices
+- Use strong, unique secrets in `.env`.
+- Restrict CORS to your frontend domain.
+- Keep your server and dependencies up to date.
+- Set up monitoring/logging (e.g., PM2 logs, Sentry, etc.).
+- Remove or protect test/demo endpoints in production.
+
+### 8. Testing
+- Visit `/api/v1/tracker/test` and `/api/v1/tracker/script` on your production domain to verify deployment.
+- Test with a `gclid` parameter to simulate Google Ads clicks.
+
+**Anti-Fraud Features:**
+- Partial-match allowlist for Polish ISPs/orgs (case-insensitive, substring match)
+- /16 subnet fraud tracking
+- Improved, focused logging
+
 ---
+
+For any issues, see the code comments or contact the maintainer.
 
 **ClickGuard Backend** - Secure, scalable, and reliable Google Ads API integration for click fraud detection. 

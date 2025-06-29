@@ -243,26 +243,29 @@ try {
 
 The **Tracker Module** provides a lightweight, plug-and-play solution for collecting user IP, session, and page analytics from any website.
 
-### Features
+#### Features
 - IP Address collection (IPv4/IPv6 supported)
 - Session tracking with unique session IDs
 - Automatic page view analytics
 - Device fingerprinting (browser, language, timezone, canvas)
 - IP enrichment (geo, ISP, org via ip-api.com)
-- In-memory device frequency and subnet fraud detection
-- Rule engine for fraud analysis (cloud IP, device frequency, subnet)
-- Step-by-step debug logging for every analysis stage
+- In-memory device frequency and /16 subnet fraud detection
+- Rule engine for fraud analysis (partial-match allowlist, device frequency, /16 subnet)
+- Step-by-step debug logging for every analysis stage (colored output, only relevant IP/proxy info, no device details)
 - In-memory storage (no database required)
 - Easy integration via a script tag
 - Built-in test page for validation
 
-### Analysis Pipeline
-1. **Raw click received**: All tracker data is logged on arrival.
+#### Analysis Pipeline
+1. **Tracking data received**: All tracker data is processed on arrival.
 2. **IP enrichment**: The backend fetches geolocation/ISP info from ip-api.com.
 3. **Device fingerprinting**: A SHA-256 hash is generated from browser, language, timezone, and canvas fingerprint.
-4. **Frequency & subnet tracking**: In-memory counters track device and subnet activity.
-5. **Rule engine**: Applies fraud rules (cloud IP, device frequency, subnet fraud) and returns a decision.
-6. **Debug logging**: Each step is logged for transparency and debugging.
+4. **Frequency & subnet tracking**: In-memory counters track device and /16 subnet activity.
+5. **Rule engine**: Applies fraud rules (allowlist, device frequency, /16 subnet fraud) and returns a decision.
+6. **Debug logging**: Each step is logged for transparency. Blocked logs show only IP/proxy info, with colored output.
+
+#### Deployment
+See the main backend [README.md](./README.md) for deployment instructions and best practices.
 
 ### API Endpoints
 - `POST /api/v1/tracker` — Receives tracking data from the client script, runs the analysis pipeline, and logs all steps.

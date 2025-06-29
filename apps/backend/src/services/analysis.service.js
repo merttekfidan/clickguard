@@ -5,6 +5,8 @@ const crypto = require('crypto');
 const fingerprintCounts = {};
 const subnetFraudCounts = {};
 const googleAdsClickCounts = {};
+const recentClicks = []; // Store recent clicks for API access
+const MAX_RECENT_CLICKS = 100; // Keep last 100 clicks
 
 function getDeviceFingerprint(rawData) {
     // Combine key signals for fingerprinting
@@ -32,7 +34,7 @@ function isGoogleAdsClick(enrichedClick) {
 }
 
 function colorText(text, color) {
-    const colors = { red: '\x1b[31m', green: '\x1b[32m', reset: '\x1b[0m' };
+    const colors = { red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m', blue: '\x1b[34m', reset: '\x1b[0m' };
     return colors[color] + text + colors.reset;
 }
 
@@ -47,6 +49,61 @@ function getBlockReason(result, enrichedClick, contextData) {
         default:
             return `Blocked: Reason=${result.reason}`;
     }
+}
+
+function storeRecentClick(enrichedClick, result, contextData) {
+    const clickRecord = {
+        id: Date.now() + '_' + Math.random().toString(36).substr(2, 9),
+        timestamp: new Date().toISOString(),
+        sessionId: enrichedClick.sessionId,
+        ipAddress: enrichedClick.ipAddress,
+        domain: enrichedClick.domain,
+        path: enrichedClick.path,
+        decision: result.decision,
+        reason: result.reason,
+        deviceFingerprint: enrichedClick.deviceFingerprint,
+        fingerprintCount: contextData.fingerprintCount,
+        googleAdsClickCount: contextData.googleAdsClickCount,
+        isGoogleAds: isGoogleAdsClick(enrichedClick),
+        // Basic info
+        userAgent: enrichedClick.userAgent,
+        language: enrichedClick.language,
+        timezone: enrichedClick.timezone,
+        screenResolution: enrichedClick.screenResolution,
+        // IP info
+        ipInfo: enrichedClick.ipInfo,
+        // Page info
+        url: enrichedClick.url,
+        referrer: enrichedClick.referrer,
+        query: enrichedClick.query
+    };
+    
+    recentClicks.unshift(clickRecord); // Add to beginning
+    if (recentClicks.length > MAX_RECENT_CLICKS) {
+        recentClicks.pop(); // Remove oldest
+    }
+}
+
+function getRecentClicks(limit = 20, filter = null) {
+    let clicks = [...recentClicks];
+    
+    if (filter) {
+        if (filter.decision) {
+            clicks = clicks.filter(click => click.decision === filter.decision);
+        }
+        if (filter.domain) {
+            clicks = clicks.filter(click => click.domain === filter.domain);
+        }
+        if (filter.ipAddress) {
+            clicks = clicks.filter(click => click.ipAddress === filter.ipAddress);
+        }
+    }
+    
+    return clicks.slice(0, limit);
+}
+
+function getClickById(clickId) {
+    return recentClicks.find(click => click.id === clickId);
 }
 
 async function processClick(rawData) {
@@ -83,24 +140,97 @@ async function processClick(rawData) {
     if (result.decision === 'BLOCK' && subnet) {
         subnetFraudCounts[subnet] = (subnetFraudCounts[subnet] || 0) + 1;
     }
+    
+    // Store click for API access
+    storeRecentClick(enrichedClick, result, contextData);
+    
     // Concise summary log with color
     const color = result.decision === 'BLOCK' ? 'red' : 'green';
     const summary = `[${colorText(result.decision, color)}] session=${enrichedClick.sessionId} ip=${enrichedClick.ipAddress} domain=${enrichedClick.domain} url=${enrichedClick.path} reason=${result.reason}`;
     console.log(summary);
-    // Only log details if BLOCKED or (temporarily) if ALLOWED (for debugging)
+    
+    // Enhanced click details logging
     if (result.decision === 'BLOCK' || result.decision === 'ALLOW') {
-        // Only show ipAddress, ipInfo, block reason, and proxy/hosting fields
-        const { ipAddress } = enrichedClick;
-        const { proxy, hosting, mobile, isp, org, country, regionName, city, query } = ipInfo || {};
-        const details = {
-            ipAddress,
-            ipInfo: { isp, org, country, regionName, city, query, proxy, hosting, mobile },
-            reason: result.reason
-        };
         const logColor = result.decision === 'BLOCK' ? 'red' : 'green';
-        console.warn(colorText(`${result.decision} click details:`, logColor), details);
+        console.warn(colorText(`\n=== ${result.decision} CLICK DETAILS ===`, logColor));
+        
+        // Basic click information
+        console.warn(colorText('📊 Basic Info:', 'blue'));
+        console.warn({
+            sessionId: enrichedClick.sessionId,
+            timestamp: enrichedClick.timestamp,
+            serverTimestamp: enrichedClick.serverTimestamp,
+            decision: result.decision,
+            reason: result.reason
+        });
+        
+        // IP and location information
+        console.warn(colorText('🌍 IP & Location:', 'blue'));
+        const { ipAddress } = enrichedClick;
+        const { proxy, hosting, mobile, isp, org, country, regionName, city, query, timezone: ipTimezone } = ipInfo || {};
+        console.warn({
+            ipAddress,
+            ipInfo: { 
+                isp, 
+                org, 
+                country, 
+                regionName, 
+                city, 
+                query, 
+                proxy, 
+                hosting, 
+                mobile,
+                timezone: ipTimezone
+            }
+        });
+        
+        // Device fingerprinting
+        console.warn(colorText('🖥️ Device Fingerprint:', 'blue'));
+        console.warn({
+            deviceFingerprint: enrichedClick.deviceFingerprint,
+            fingerprintCount: contextData.fingerprintCount,
+            googleAdsClickCount: contextData.googleAdsClickCount,
+            subnet: contextData.subnet,
+            subnetFraudCount: contextData.subnetFraudCount
+        });
+        
+        // Browser and device information
+        console.warn(colorText('🌐 Browser & Device:', 'blue'));
+        console.warn({
+            userAgent: enrichedClick.userAgent,
+            language: enrichedClick.language,
+            timezone: enrichedClick.timezone,
+            screenResolution: enrichedClick.screenResolution,
+            viewport: enrichedClick.viewport,
+            canvasFingerprint: enrichedClick.canvasFingerprint?.slice(0, 16) + '...'
+        });
+        
+        // Page and navigation information
+        console.warn(colorText('📄 Page Info:', 'blue'));
+        console.warn({
+            url: enrichedClick.url,
+            domain: enrichedClick.domain,
+            path: enrichedClick.path,
+            query: enrichedClick.query,
+            hash: enrichedClick.hash,
+            referrer: enrichedClick.referrer
+        });
+        
+        // Headers and server information
+        console.warn(colorText('🔧 Server Info:', 'blue'));
+        console.warn({
+            acceptLanguage: enrichedClick.acceptLanguage,
+            headers: enrichedClick.headers
+        });
+        
+        console.warn(colorText('=== END CLICK DETAILS ===\n', logColor));
     }
+    
     return { enrichedClick, result };
 }
 
-module.exports = { processClick }; 
+module.exports = { 
+    processClick, 
+    getRecentClicks, 
+    getClickById 
+}; 

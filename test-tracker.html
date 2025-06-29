@@ -7,7 +7,7 @@
     <!-- Local development tracker -->
     <script src="http://localhost:3001/api/v1/tracker/script"></script>
     <!-- Live domain tracker (replace with your actual live domain) -->
-    <script src="https://your-live-domain.com/api/v1/tracker/script"></script>
+    <script src="https://clickguard-q89a.onrender.com/api/v1/tracker/script"></script>
 
     <style>
         body {
@@ -139,6 +139,8 @@
         <button onclick="getSessionId()">Get Session ID</button>
         <button onclick="getStats()">Get Stats (Local)</button>
         <button onclick="getLiveStats()">Get Stats (Live)</button>
+        <button onclick="getRecentClicks()">Get Recent Clicks</button>
+        <button onclick="getBlockedClicks()">Get Blocked Clicks</button>
         <button onclick="reloadPage()">Reload Page (Test New Page View)</button>
         <button onclick="testGoogleAdsClick()">Simulate Google Ads Click</button>
     </div>
@@ -176,11 +178,33 @@
         async function getLiveStats() {
             try {
                 log('Fetching live stats...');
-                const response = await fetch('https://your-live-domain.com/api/v1/tracker/stats');
+                const response = await fetch('https://clickguard-q89a.onrender.com/api/v1/tracker/stats');
                 const data = await response.json();
                 log(`Live Stats: ${JSON.stringify(data, null, 2)}`);
             } catch (error) {
                 log(`Error fetching live stats: ${error.message}`);
+            }
+        }
+        
+        async function getRecentClicks() {
+            try {
+                log('Fetching recent clicks...');
+                const response = await fetch('http://localhost:3001/api/v1/tracker/clicks?limit=10');
+                const data = await response.json();
+                log(`Recent Clicks: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`Error fetching recent clicks: ${error.message}`);
+            }
+        }
+        
+        async function getBlockedClicks() {
+            try {
+                log('Fetching blocked clicks...');
+                const response = await fetch('http://localhost:3001/api/v1/tracker/clicks?decision=BLOCK&limit=10');
+                const data = await response.json();
+                log(`Blocked Clicks: ${JSON.stringify(data, null, 2)}`);
+            } catch (error) {
+                log(`Error fetching blocked clicks: ${error.message}`);
             }
         }
         

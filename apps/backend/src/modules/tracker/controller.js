@@ -71,7 +71,76 @@ const getTrackingStats = async (req, res) => {
     }
 };
 
+/**
+ * Get recent click details
+ */
+const getRecentClicks = async (req, res) => {
+    try {
+        const limit = parseInt(req.query.limit) || 20;
+        const filter = {
+            decision: req.query.decision,
+            domain: req.query.domain,
+            ipAddress: req.query.ipAddress
+        };
+        
+        // Remove undefined filters
+        Object.keys(filter).forEach(key => {
+            if (filter[key] === undefined) {
+                delete filter[key];
+            }
+        });
+        
+        const clicks = analysisService.getRecentClicks(limit, Object.keys(filter).length > 0 ? filter : null);
+        
+        res.status(200).json({
+            success: true,
+            data: {
+                clicks,
+                total: clicks.length,
+                limit,
+                filter: Object.keys(filter).length > 0 ? filter : null
+            }
+        });
+    } catch (error) {
+        console.error('Error getting recent clicks:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+};
+
+/**
+ * Get specific click details by ID
+ */
+const getClickDetails = async (req, res) => {
+    try {
+        const { clickId } = req.params;
+        const click = analysisService.getClickById(clickId);
+        
+        if (!click) {
+            return res.status(404).json({
+                success: false,
+                message: 'Click not found'
+            });
+        }
+        
+        res.status(200).json({
+            success: true,
+            data: click
+        });
+    } catch (error) {
+        console.error('Error getting click details:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+};
+
 module.exports = {
     handleTrackingData,
-    getTrackingStats
+    getTrackingStats,
+    getRecentClicks,
+    getClickDetails
 }; 

@@ -191,6 +191,17 @@ const token = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
 
 ## Google Ads Integration
 
+All Google Ads credentials (client ID, client secret, developer token, redirect URIs, etc.) **must be set via environment variables**. Do not use client_secret.json or any file-based secrets in production. See .env.example for required variables.
+
+#### Example Required Environment Variables
+```
+GOOGLE_ADS_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
+GOOGLE_ADS_CLIENT_SECRET=your-google-oauth-client-secret
+GOOGLE_ADS_DEVELOPER_TOKEN=your-google-ads-developer-token
+GOOGLE_ADS_MCC_ID=your-google-ads-mcc-id
+GOOGLE_ADS_REDIRECT_URIS=urn:ietf:wg:oauth:2.0:oob
+```
+
 ### API Client Architecture
 
 ```javascript

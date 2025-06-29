@@ -20,6 +20,7 @@ A robust Node.js backend server for ClickGuard, providing Google Ads API authent
 - **npm** >= 8.0.0
 - **Google Ads API Access** (Developer Token, OAuth2 credentials)
 - **Google Cloud Console** project with Google Ads API enabled
+- **All Google Ads credentials must be set via environment variables (see .env.example). Do not use client_secret.json.**
 
 ## 🛠️ Installation
 
@@ -57,6 +58,7 @@ A robust Node.js backend server for ClickGuard, providing Google Ads API authent
    GOOGLE_ADS_CLIENT_SECRET=your-google-oauth-client-secret
    GOOGLE_ADS_DEVELOPER_TOKEN=your-google-ads-developer-token
    GOOGLE_ADS_MCC_ID=your-google-ads-mcc-id
+   GOOGLE_ADS_REDIRECT_URIS=urn:ietf:wg:oauth:2.0:oob
    ```
 
 ## 🔧 Development

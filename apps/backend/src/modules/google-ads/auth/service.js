@@ -1,24 +1,21 @@
-const fs = require('fs');
-const path = require('path');
 const { google } = require('googleapis');
 
-const CLIENT_SECRET_PATH = path.join(__dirname, 'client_secret.json');
 const SCOPES = ['https://www.googleapis.com/auth/adwords'];
 
 class GoogleAdsAuthService {
   constructor() {
     this.credentials = this.loadCredentials();
     this.oauth2Client = this.createOAuth2Client();
-    this.tokenPath = path.join(__dirname, 'token.json');
+    this.tokenPath = null; // No file-based token storage in production
   }
 
   loadCredentials() {
-    try {
-      const content = fs.readFileSync(CLIENT_SECRET_PATH, 'utf8');
-      return JSON.parse(content).installed || JSON.parse(content).web;
-    } catch (err) {
-      throw new Error('Error loading client_secret.json: ' + err.message);
-    }
+    // Load credentials from environment variables only
+    return {
+      client_id: process.env.GOOGLE_ADS_CLIENT_ID,
+      client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET,
+      redirect_uris: (process.env.GOOGLE_ADS_REDIRECT_URIS || 'urn:ietf:wg:oauth:2.0:oob').split(',')
+    };
   }
 
   createOAuth2Client() {
@@ -41,39 +38,31 @@ class GoogleAdsAuthService {
   async getTokenFromCode(code) {
     const { tokens } = await this.oauth2Client.getToken(code);
     this.oauth2Client.setCredentials(tokens);
-    fs.writeFileSync(this.tokenPath, JSON.stringify(tokens));
+    // In production, store tokens in a secure store or env, not in a file
     return tokens;
   }
 
+  // No file-based token loading in production
   loadToken() {
-    if (fs.existsSync(this.tokenPath)) {
-      const token = JSON.parse(fs.readFileSync(this.tokenPath, 'utf8'));
-      this.oauth2Client.setCredentials(token);
-      return token;
-    }
     return null;
   }
 
   getRefreshToken() {
-    const token = this.loadToken();
-    return token ? token.refresh_token : null;
+    return null;
   }
 
   getAuthStatus() {
-    const token = this.loadToken();
     return {
-      isAuthenticated: !!token,
-      hasRefreshToken: !!(token && token.refresh_token),
+      isAuthenticated: !!this.oauth2Client.credentials,
+      hasRefreshToken: !!(this.oauth2Client.credentials && this.oauth2Client.credentials.refresh_token),
     };
   }
 
   async ensureAuthenticated() {
-    let token = this.loadToken();
-    if (!token) {
+    if (!this.oauth2Client.credentials || !this.oauth2Client.credentials.refresh_token) {
       throw new Error('No refresh token found. Please authenticate using the OAuth2 flow.');
     }
-    // Optionally, check if token is expired and refresh if needed
-    return token;
+    return this.oauth2Client.credentials;
   }
 
   getOAuth2Client() {

@@ -16,6 +16,24 @@ const allowedISPs = [
   "Netia S.A."
 ];
 
+function isLocalDevelopmentIP(ipAddress) {
+  if (!ipAddress) return false;
+  
+  // Check for localhost IPv4 and IPv6
+  if (ipAddress === '127.0.0.1' || ipAddress === '::1' || ipAddress === 'localhost') {
+    return true;
+  }
+  
+  // Check for local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x)
+  const localIPPatterns = [
+    /^192\.168\./,
+    /^10\./,
+    /^172\.(1[6-9]|2[0-9]|3[0-1])\./
+  ];
+  
+  return localIPPatterns.some(pattern => pattern.test(ipAddress));
+}
+
 function isAllowedISP(ipInfo) {
   if (!ipInfo || ipInfo.status !== "success") return false;
   const isp = (ipInfo.isp || "").toLowerCase();
@@ -35,6 +53,16 @@ function isGoogleAdsClick(enrichedClick) {
 }
 
 function runRules(enrichedClick, contextData) {
+    // Rule #0: Allow local development IPs
+    const ipAddress = enrichedClick.ipAddress;
+    if (isLocalDevelopmentIP(ipAddress)) {
+        console.debug('Rule #0: Local development IP detected, allowing', { ipAddress });
+        return {
+            decision: 'ALLOW',
+            reason: 'LOCAL_DEVELOPMENT'
+        };
+    }
+
     // Rule #1: IP Type Analysis (Allowlist)
     const ipInfo = enrichedClick.ipInfo;
     const isp = (ipInfo && ipInfo.isp) || '';

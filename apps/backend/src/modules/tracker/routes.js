@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const path = require('path');
 const controller = require('./controller');
+const adminRoutes = require('./admin.routes');
 
 // POST /api/v1/tracker - Handle tracking data from client script
 router.post('/', controller.handleTrackingData);
@@ -33,5 +34,8 @@ router.get('/test', (req, res) => {
 
 // GET /api/v1/tracker/processed-clicks - Get processed click logs (debug)
 router.get('/processed-clicks', controller.getProcessedClicks);
+
+// Admin dashboard routes
+router.use('/admin', adminRoutes);
 
 module.exports = router; 

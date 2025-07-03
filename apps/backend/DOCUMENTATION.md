@@ -1,82 +1,61 @@
 # ClickGuard Backend Documentation
 
-## Smart Sledgehammer Model (Google Ads Click Protection)
+## Major Features & Architecture (2024-07-03 Session)
 
-### Overview
-The Smart Sledgehammer Model is designed to aggressively block fraudulent or abusive Google Ads clicks using a combination of device fingerprinting and IP/subnet analysis. The model applies only to Google Ads clicks (detected by referrer, gclid, or UTM parameters).
+### 1. Advanced Device Fingerprinting
+- Uses a hybrid "sepet" approach: %80 hard-to-spoof (canvas, webgl, audio, hardware info), %20 easy-to-spoof (language, timezone, screen, platform).
+- **userAgent** is NOT used in the fingerprint (removed for privacy and anti-bot evasion).
+- Device fingerprint is generated on the frontend and sent as `deviceFingerprint`.
+- See `clickguard-tracker.js` for implementation.
 
-### Blocking Logic
+### 2. MongoDB Atlas Integration
+- All click logs are stored in MongoDB Atlas using the `ClickLog` model.
+- Connection string is set via `MONGO_URI` in `.env`.
+- See `src/models/ClickLog.js` and `src/config/mongo.js`.
 
-#### 1. Device Fingerprint Frequency (Google Ads Clicks Only)
-- If the same device fingerprint is seen **more than 10 times in 5 minutes**:
-  - **If all IPs are the same:** Block only that IP (`/32`).
-  - **If all IPs share the same first 3 octets (e.g., 1.2.3.X):** Block the `/24` subnet (e.g., `1.2.3.0/24`).
-  - **If all IPs share the same first 2 octets (e.g., 1.2.X.Y):** Block the `/16` subnet (e.g., `1.2.0.0/16`).
-  - **If the pattern is mixed:** Fallback to blocking only the IP (`/32`).
-- This logic is **only applied to Google Ads clicks**.
+### 3. Modular Anti-Bot System
+- **Honeypot**: Hidden field in payload, triggers PoW if filled.
+- **Proof-of-Work (PoW)**: Client must solve a hash puzzle if suspected as bot.
+- Both modules are configurable in `src/modules/tracker/config.js`.
+- See `honeypot.service.js` and `proofOfWork.service.js`.
 
-#### 2. Allowed ISP Check
-- If the IP's ISP or organization matches the allowlist in `cloud_keywords.json`, the click is allowed (unless blocked by the fingerprint rule above).
+### 4. Render.com Production Readiness
+- CORS can be set to allow all or restrict to frontend domain.
+- Health check endpoint at `/api/health`.
+- All secrets/configs via environment variables.
+- Local development IP allow rule is commented out for production.
+- See `DEPLOYMENT_LOG.md` for all deployment-specific changes.
 
-#### 3. Frequency Check (No ISP Info)
-- If ISP info is unavailable and the same IP is seen **more than 3 times in 5 minutes**, block only that IP (`/32`).
+### 5. Endpoints Summary
+- `/api/v1/tracker` (POST): Main click endpoint
+- `/api/v1/tracker/stats`, `/api/v1/tracker/clicks`, `/api/v1/tracker/clicks/:clickId`, `/api/v1/tracker/google-ads-stats`, `/api/v1/tracker/processed-clicks`
+- `/api/v1/tracker/script`: Tracking script
+- `/api/v1/tracker/test`: Test page
+- `/api/v1/google-ads/...`: Google Ads integration endpoints
+- `/api/health`: Health check
 
-#### 4. Default Block
-- If the IP is not in the allowlist, block the `/16` subnet.
+### 6. Privacy & Legal Considerations
+- No userAgent or direct personal data in fingerprint.
+- All fingerprint data is hashed and anonymized.
+- IP address is stored (required for anti-fraud), but all other data is non-personal.
+- Compliant with GDPR/KVKK as long as users are informed and consent is obtained.
 
-### Google Ads Click Detection
-A click is considered a Google Ads click if **any** of the following are true:
-- The referrer is a Google Ads-related domain (e.g., `google.com`, `googleadservices.com`, etc.)
-- The URL or query string contains a Google Ads click ID (like `gclid`)
-- The domain matches a known Google Ads domain
+### 7. How to Revert to Development Mode
+- Uncomment local-dev IP allow rule in `ruleEngine.service.js`.
+- Set CORS to allow all origins.
+- Use `NODE_ENV=development`, `LOG_LEVEL=debug`.
+- Use local `.env` for secrets.
 
-### Logging
-- The backend logs every Google Ads click, including device fingerprint analysis and the type of block applied.
-- Logs clearly indicate when a block is triggered and what is being blocked (IP, /24, or /16).
-
-### Example Log Entries
-```
-🚨 Device fingerprint abuse: same IP, blocking /32
-🚨 Device fingerprint abuse: /24 pattern, blocking /24
-🚨 Device fingerprint abuse: /16 pattern, blocking /16
-✅ Device fingerprint frequency OK (Google Ads):
-```
-
-### Configuration
-- The allowlist for ISPs is managed in `cloud_keywords.json`.
-- The device fingerprint threshold is set to 10 clicks in 5 minutes (configurable in code).
-
-## Anti-Bot Features: Honeypot & Proof-of-Work
-
-### Honeypot
-- The tracker script sends a hidden honeypot field with every click.
-- If a bot fills this field, the backend detects it and triggers a proof-of-work challenge.
-- This is a simple, zero-friction way to catch unsophisticated bots.
-
-### Proof-of-Work (PoW) Challenge
-- When a honeypot is triggered, the backend responds with a PoW challenge.
-- The client must find a nonce so that `SHA256(challenge + sessionId + nonce)` starts with a required prefix (e.g., '0000').
-- The tracker script solves this in JavaScript and resends the click with the solution.
-- The backend verifies the solution before accepting the click.
-- This slows down bots and can peg their CPU at 100% if they try to click rapidly.
-
-#### Configuration
-- All anti-bot features are configured in `src/modules/tracker/config.js`:
-  - `honeypotEnabled`: Enable/disable honeypot detection
-  - `proofOfWorkEnabled`: Enable/disable proof-of-work challenge
-  - `powDifficulty`: Number of leading zeros required in the hash (higher = harder)
-  - `powPrefixChar`: The character to use for the prefix (default: '0')
-- You can also set `CG_POW_DIFFICULTY` in your environment to override the default difficulty.
-
-#### Example Log Entries
-```
-🪤 Honeypot triggered! Sending proof-of-work challenge to suspected bot: {...}
-[DEBUG POW] Proof-of-work challenge received: {...}
-[DEBUG POW] Proof-of-work solved, nonce: ...
-✅ Proof-of-work solved, click accepted: {...}
-❌ Invalid proof-of-work solution! Bot blocked: {...}
-```
+### 8. Admin Dashboard API Endpoints
+- `/api/v1/tracker/admin/stats`: Returns overall click/bot stats for dashboard.
+- `/api/v1/tracker/admin/logs`: Returns paginated click logs.
+- `/api/v1/tracker/admin/domains`: Returns stats per domain.
+- `/api/v1/tracker/admin/bots`: Returns bot detection stats.
+- `/api/v1/tracker/admin/google-ads`: Returns Google Ads click/bot stats.
+- `/api/v1/tracker/admin/google-ads/campaigns`: Returns Google Ads campaign stats.
+- `/api/v1/tracker/admin/domains/:domainId`: Returns daily stats for a specific domain.
+- `/api/v1/tracker/admin/bots/ip/:ipAddress`: Returns attack stats for a specific bot IP.
 
 ---
 
-For further details, see the implementation in `honeypot.service.js`, `proofOfWork.service.js`, and the main controller.
+For further details, see the code in `

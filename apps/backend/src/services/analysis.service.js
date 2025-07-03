@@ -1,5 +1,6 @@
 const ruleEngine = require('./ruleEngine.service');
 const crypto = require('crypto');
+const clickProcessor = require('../workers/clickProcessor.worker');
 
 // In-memory stores
 const fingerprintCounts = {};
@@ -101,22 +102,52 @@ function colorText(text, color) {
 
 function getBlockReason(result, enrichedClick, contextData) {
     switch (result.reason) {
+        case 'ALLOWED_ISP':
+            return `Allowed: IP is from allowed ISP (${enrichedClick.ipInfo?.isp || 'unknown'}).`;
+        case 'NOT_ALLOWED_ISP':
+            return `Blocked: IP not in allowed ISP list (${enrichedClick.ipInfo?.isp || 'unknown'}).`;
+        case 'LOCAL_DEVELOPMENT':
+            return `Allowed: Local development IP.`;
+        case 'HIGH_FREQUENCY_NO_ISP':
+            return `Blocked: High frequency detected (${result.details?.clickCount || 0} clicks in 5 minutes) - ISP info unavailable.`;
+        case 'FREQUENCY_OK_NO_ISP':
+            return `Allowed: Frequency OK (${result.details?.clickCount || 0} clicks in 5 minutes) - ISP info unavailable.`;
         case 'FRAUD_IP_TYPE':
             return `Blocked: IP (${enrichedClick.ipAddress}) is from a cloud/hosting provider.`;
         case 'FRAUD_DEVICE_FREQUENCY':
-            return `Blocked: Device fingerprint (${enrichedClick.deviceFingerprint.slice(0,8)}) seen too frequently (${contextData.fingerprintCount} times).`;
+            return `Blocked: Device fingerprint (${contextData.fingerprintCount} times).`;
         case 'FRAUD_CIDR_RANGE':
             return `Blocked: Subnet (${contextData.subnet}) has too many frauds (${contextData.subnetFraudCount + 1}).`;
         case 'FRAUD_GOOGLE_ADS_FREQUENCY':
-            return `Blocked: Google Ads device (${enrichedClick.deviceFingerprint.slice(0,8)}) clicked too frequently (${contextData.googleAdsClickCount} times).`;
+            return `Blocked: Google Ads device (${contextData.googleAdsClickCount} times).`;
         case 'FRAUD_GOOGLE_ADS_SUSPICIOUS':
             return `Blocked: Suspicious Google Ads pattern detected (${result.details?.clickId?.type || 'unknown'}).`;
+        case 'DATA_CENTER_DETECTED':
+            return `Blocked: Data Center Detected.`;
+        case 'VPN_DETECTED':
+            return `Blocked: VPN Detected.`;
+        case 'HIGH_FREQUENCY':
+            return `Blocked: High Frequency.`;
         default:
             return `Blocked: Reason=${result.reason}`;
     }
 }
 
 function storeRecentClick(enrichedClick, result, contextData) {
+    const isBlocked = result.decision === 'BLOCK';
+    const ipType = enrichedClick.ipInfo && enrichedClick.ipInfo.type ? enrichedClick.ipInfo.type : null;
+    let blockedEntry = null;
+    let blockType = null;
+    if (isBlocked) {
+        // If result.target is a CIDR, treat as block type IP_BLOCK, else IP_ADDRESS
+        if (result.target && typeof result.target === 'string' && result.target.includes('/')) {
+            blockedEntry = result.target;
+            blockType = 'IP_BLOCK';
+        } else {
+            blockedEntry = enrichedClick.ipAddress;
+            blockType = 'IP_ADDRESS';
+        }
+    }
     const clickRecord = {
         id: Date.now() + '_' + Math.random().toString(36).substr(2, 9),
         timestamp: new Date().toISOString(),
@@ -138,6 +169,10 @@ function storeRecentClick(enrichedClick, result, contextData) {
         screenResolution: enrichedClick.screenResolution,
         // IP info
         ipInfo: enrichedClick.ipInfo,
+        ip_type: ipType, // New field for ClickLogs
+        // Block info (only for blocked clicks)
+        blocked_entry: blockedEntry, // New field for BlockedIPs
+        block_type: blockType, // New field for BlockedIPs
         // Page info
         url: enrichedClick.url,
         referrer: enrichedClick.referrer,
@@ -145,7 +180,6 @@ function storeRecentClick(enrichedClick, result, contextData) {
         // Additional details
         details: result.details || null
     };
-    
     recentClicks.unshift(clickRecord); // Add to beginning
     if (recentClicks.length > MAX_RECENT_CLICKS) {
         recentClicks.pop(); // Remove oldest
@@ -187,147 +221,37 @@ function getGoogleAdsStats() {
     };
 }
 
-async function processClick(rawData) {
-    let ipInfo = null;
-    try {
-        const ip = rawData.ipAddress || rawData.ip || '';
-        if (ip) {
-            const res = await fetch(`http://ip-api.com/json/${ip}`);
-            ipInfo = await res.json();
+async function processClick(rawData, customerId = null, campaignId = null) {
+    // Use the new worker for processing
+    const logEntry = await clickProcessor.processClick(rawData, customerId, campaignId);
+    
+    // Add error handling for IP API failures
+    if (logEntry && logEntry.click && logEntry.click.ipInfo) {
+        const ipInfo = logEntry.click.ipInfo;
+        if (ipInfo.status === 'fail' || !ipInfo.isp) {
+            console.warn(`⚠️ IP API Error for ${rawData.ipAddress}:`, {
+                status: ipInfo.status,
+                message: ipInfo.message,
+                isp: ipInfo.isp,
+                org: ipInfo.org,
+                note: 'Client allowed despite API failure'
+            });
         }
-    } catch (err) {
-        ipInfo = { status: 'fail', message: err.message };
-    }
-    const deviceFingerprint = getDeviceFingerprint(rawData);
-    fingerprintCounts[deviceFingerprint] = (fingerprintCounts[deviceFingerprint] || 0) + 1;
-    const enrichedClick = {
-        ...rawData,
-        ipInfo,
-        deviceFingerprint
-    };
-    
-    // Google Ads click counting and analysis
-    const isGoogleAds = isGoogleAdsClick(enrichedClick);
-    const clickId = extractClickId(enrichedClick);
-    
-    if (isGoogleAds) {
-        googleAdsClickCounts[deviceFingerprint] = (googleAdsClickCounts[deviceFingerprint] || 0) + 1;
-        console.log(colorText(`[GOOGLE ADS] fingerprint=${deviceFingerprint.slice(0,8)} count=${googleAdsClickCounts[deviceFingerprint]} clickId=${clickId?.type || 'none'}`, 'magenta'));
     }
     
-    const subnet = getSubnet(rawData.ipAddress);
-    const contextData = {
-        fingerprintCount: fingerprintCounts[deviceFingerprint],
-        subnet,
-        subnetFraudCount: subnet ? (subnetFraudCounts[subnet] || 0) : 0,
-        googleAdsClickCount: googleAdsClickCounts[deviceFingerprint] || 0
-    };
-    
-    const result = ruleEngine.runRules(enrichedClick, contextData);
-    
-    // Update Google Ads statistics
-    updateGoogleAdsStats(enrichedClick, result);
-    
-    if (result.decision === 'BLOCK' && subnet) {
-        subnetFraudCounts[subnet] = (subnetFraudCounts[subnet] || 0) + 1;
+    // For backward compatibility, store in recentClicks
+    if (logEntry && logEntry.click) {
+        recentClicks.unshift({
+            ...logEntry.click,
+            timestamp: logEntry.timestamp,
+            decision: logEntry.decision.decision,
+            reason: logEntry.decision.reason,
+            block_type: logEntry.decision.blockType || null,
+            blocked_entry: logEntry.decision.target || null
+        });
+        if (recentClicks.length > MAX_RECENT_CLICKS) recentClicks.pop();
     }
-    
-    // Store click for API access
-    storeRecentClick(enrichedClick, result, contextData);
-    
-    // Concise summary log with color
-    const color = result.decision === 'BLOCK' ? 'red' : 'green';
-    const googleAdsIndicator = isGoogleAds ? colorText(' [GOOGLE ADS]', 'magenta') : '';
-    const clickIdIndicator = clickId ? colorText(` [${clickId.type}]`, 'yellow') : '';
-    const summary = `[${colorText(result.decision, color)}] session=${enrichedClick.sessionId} ip=${enrichedClick.ipAddress} domain=${enrichedClick.domain} url=${enrichedClick.path} reason=${result.reason}${googleAdsIndicator}${clickIdIndicator}`;
-    console.log(summary);
-    
-    // Enhanced click details logging
-    if (result.decision === 'BLOCK' || result.decision === 'ALLOW') {
-        const logColor = result.decision === 'BLOCK' ? 'red' : 'green';
-        console.warn(colorText(`\n=== ${result.decision} CLICK DETAILS ===`, logColor));
-        
-        // Basic click information
-        console.warn(colorText('📊 Basic Info:', 'blue'));
-        console.warn({
-            sessionId: enrichedClick.sessionId,
-            timestamp: enrichedClick.timestamp,
-            serverTimestamp: enrichedClick.serverTimestamp,
-            decision: result.decision,
-            reason: result.reason,
-            isGoogleAds,
-            clickId
-        });
-        
-        // IP and location information
-        console.warn(colorText('🌍 IP & Location:', 'blue'));
-        const { ipAddress } = enrichedClick;
-        const { proxy, hosting, mobile, isp, org, country, regionName, city, query, timezone: ipTimezone } = ipInfo || {};
-        console.warn({
-            ipAddress,
-            ipInfo: { 
-                isp, 
-                org, 
-                country, 
-                regionName, 
-                city, 
-                query, 
-                proxy, 
-                hosting, 
-                mobile,
-                timezone: ipTimezone
-            }
-        });
-        
-        // Device fingerprinting
-        console.warn(colorText('🖥️ Device Fingerprint:', 'blue'));
-        console.warn({
-            deviceFingerprint: enrichedClick.deviceFingerprint,
-            fingerprintCount: contextData.fingerprintCount,
-            googleAdsClickCount: contextData.googleAdsClickCount,
-            subnet: contextData.subnet,
-            subnetFraudCount: contextData.subnetFraudCount
-        });
-        
-        // Browser and device information
-        console.warn(colorText('🌐 Browser & Device:', 'blue'));
-        console.warn({
-            userAgent: enrichedClick.userAgent,
-            language: enrichedClick.language,
-            timezone: enrichedClick.timezone,
-            screenResolution: enrichedClick.screenResolution,
-            viewport: enrichedClick.viewport,
-            canvasFingerprint: enrichedClick.canvasFingerprint?.slice(0, 16) + '...'
-        });
-        
-        // Page and navigation information
-        console.warn(colorText('📄 Page Info:', 'blue'));
-        console.warn({
-            url: enrichedClick.url,
-            domain: enrichedClick.domain,
-            path: enrichedClick.path,
-            query: enrichedClick.query,
-            hash: enrichedClick.hash,
-            referrer: enrichedClick.referrer
-        });
-        
-        // Headers and server information
-        console.warn(colorText('🔧 Server Info:', 'blue'));
-        console.warn({
-            acceptLanguage: enrichedClick.acceptLanguage,
-            headers: enrichedClick.headers
-        });
-        
-        // Additional details from rule engine
-        if (result.details) {
-            console.warn(colorText('🔍 Rule Details:', 'blue'));
-            console.warn(result.details);
-        }
-        
-        console.warn(colorText('=== END CLICK DETAILS ===\n', logColor));
-    }
-    
-    return { enrichedClick, result };
+    return logEntry;
 }
 
 module.exports = { 

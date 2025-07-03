@@ -1,320 +1,82 @@
-# ClickGuard Backend - Technical Documentation
+# ClickGuard Backend Documentation
 
-## Table of Contents
+## Smart Sledgehammer Model (Google Ads Click Protection)
 
-1. [Architecture Overview](#architecture-overview)
-2. [Code Structure](#code-structure)
-3. [API Implementation](#api-implementation)
-4. [Authentication Flow](#authentication-flow)
-5. [Google Ads Integration](#google-ads-integration)
-6. [Tracker Module](#tracker-module)
-7. [Security Implementation](#security-implementation)
-8. [Error Handling](#error-handling)
-9. [Performance Considerations](#performance-considerations)
-10. [Development Guidelines](#development-guidelines)
-11. [Deployment Architecture](#deployment-architecture)
+### Overview
+The Smart Sledgehammer Model is designed to aggressively block fraudulent or abusive Google Ads clicks using a combination of device fingerprinting and IP/subnet analysis. The model applies only to Google Ads clicks (detected by referrer, gclid, or UTM parameters).
 
-## Architecture Overview
+### Blocking Logic
 
-### System Architecture
+#### 1. Device Fingerprint Frequency (Google Ads Clicks Only)
+- If the same device fingerprint is seen **more than 10 times in 5 minutes**:
+  - **If all IPs are the same:** Block only that IP (`/32`).
+  - **If all IPs share the same first 3 octets (e.g., 1.2.3.X):** Block the `/24` subnet (e.g., `1.2.3.0/24`).
+  - **If all IPs share the same first 2 octets (e.g., 1.2.X.Y):** Block the `/16` subnet (e.g., `1.2.0.0/16`).
+  - **If the pattern is mixed:** Fallback to blocking only the IP (`/32`).
+- This logic is **only applied to Google Ads clicks**.
 
-The ClickGuard Backend follows a **modular, layered architecture** with clear separation of concerns:
+#### 2. Allowed ISP Check
+- If the IP's ISP or organization matches the allowlist in `cloud_keywords.json`, the click is allowed (unless blocked by the fingerprint rule above).
 
+#### 3. Frequency Check (No ISP Info)
+- If ISP info is unavailable and the same IP is seen **more than 3 times in 5 minutes**, block only that IP (`/32`).
+
+#### 4. Default Block
+- If the IP is not in the allowlist, block the `/16` subnet.
+
+### Google Ads Click Detection
+A click is considered a Google Ads click if **any** of the following are true:
+- The referrer is a Google Ads-related domain (e.g., `google.com`, `googleadservices.com`, etc.)
+- The URL or query string contains a Google Ads click ID (like `gclid`)
+- The domain matches a known Google Ads domain
+
+### Logging
+- The backend logs every Google Ads click, including device fingerprint analysis and the type of block applied.
+- Logs clearly indicate when a block is triggered and what is being blocked (IP, /24, or /16).
+
+### Example Log Entries
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Presentation Layer                       │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
-│  │   HTTP Routes   │  │  Middleware     │  │  Validation  │ │
-│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
-│                    Business Logic Layer                     │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
-│  │   Services      │  │  Controllers    │  │  Utilities   │ │
-│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-┌─────────────────────────────────────────────────────────────┐
-│                    Data Access Layer                        │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌──────────────┐ │
-│  │   API Clients   │  │  External APIs  │  │  File System │ │
-│  └─────────────────┘  └─────────────────┘  └──────────────┘ │
-└─────────────────────────────────────────────────────────────┘
-```
-
-### Design Patterns
-
-1. **Module Pattern**: Each feature is encapsulated in its own module
-2. **Service Layer Pattern**: Business logic is separated from route handlers
-3. **Repository Pattern**: Data access is abstracted through client interfaces
-4. **Middleware Pattern**: Cross-cutting concerns are handled by middleware
-
-## Code Structure
-
-### Directory Organization
-
-```
-apps/backend/
-├── server.js                 # Application entry point
-├── package.json              # Dependencies and scripts
-├── .env                      # Environment variables (not in git)
-├── .env.example              # Environment template
-├── .gitignore                # Git ignore rules
-└── src/
-    ├── app.js                # Express application setup
-    ├── modules/              # Feature modules
-    │   └── google-ads/       # Google Ads integration module
-    │       ├── api/          # API client layer
-    │       │   ├── client.js     # Google Ads API client
-    │       │   ├── customer.js   # Customer operations
-    │       │   ├── report.js     # Report generation
-    │       │   └── index.js      # Module exports
-    │       ├── auth/         # Authentication layer
-    │       │   ├── service.js    # OAuth2 service
-    │       │   └── routes.js     # Auth routes
-    │       ├── service.js    # Business logic service
-    │       └── routes.js     # API routes
-    ├── services/             # Shared business services
-    ├── models/               # Data models
-    ├── config/               # Configuration files
-    ├── workers/              # Background workers
-    ├── utils/                # Utility functions
-    └── api/                  # API routes and controllers
+🚨 Device fingerprint abuse: same IP, blocking /32
+🚨 Device fingerprint abuse: /24 pattern, blocking /24
+🚨 Device fingerprint abuse: /16 pattern, blocking /16
+✅ Device fingerprint frequency OK (Google Ads):
 ```
 
-### Module Structure
+### Configuration
+- The allowlist for ISPs is managed in `cloud_keywords.json`.
+- The device fingerprint threshold is set to 10 clicks in 5 minutes (configurable in code).
 
-Each module follows a consistent structure:
+## Anti-Bot Features: Honeypot & Proof-of-Work
 
+### Honeypot
+- The tracker script sends a hidden honeypot field with every click.
+- If a bot fills this field, the backend detects it and triggers a proof-of-work challenge.
+- This is a simple, zero-friction way to catch unsophisticated bots.
+
+### Proof-of-Work (PoW) Challenge
+- When a honeypot is triggered, the backend responds with a PoW challenge.
+- The client must find a nonce so that `SHA256(challenge + sessionId + nonce)` starts with a required prefix (e.g., '0000').
+- The tracker script solves this in JavaScript and resends the click with the solution.
+- The backend verifies the solution before accepting the click.
+- This slows down bots and can peg their CPU at 100% if they try to click rapidly.
+
+#### Configuration
+- All anti-bot features are configured in `src/modules/tracker/config.js`:
+  - `honeypotEnabled`: Enable/disable honeypot detection
+  - `proofOfWorkEnabled`: Enable/disable proof-of-work challenge
+  - `powDifficulty`: Number of leading zeros required in the hash (higher = harder)
+  - `powPrefixChar`: The character to use for the prefix (default: '0')
+- You can also set `CG_POW_DIFFICULTY` in your environment to override the default difficulty.
+
+#### Example Log Entries
 ```
-module/
-├── api/              # External API integration
-├── auth/             # Authentication logic
-├── service.js        # Business logic
-├── routes.js         # HTTP routes
-└── index.js          # Module exports
-```
-
-## API Implementation
-
-### Route Structure
-
-All routes follow RESTful conventions:
-
-```javascript
-// Base route: /api/v1/google-ads
-router.get('/status', handler);           // GET resource
-router.post('/test-connection', handler); // POST action
-router.get('/accounts', handler);         // GET collection
-router.get('/account/:id/info', handler); // GET specific resource
-```
-
-### Response Format
-
-Standardized response format:
-
-```javascript
-// Success Response
-{
-  "success": true,
-  "data": { ... },
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
-
-// Error Response
-{
-  "success": false,
-  "error": "Error message",
-  "details": "Detailed error information",
-  "timestamp": "2024-01-01T00:00:00.000Z"
-}
+🪤 Honeypot triggered! Sending proof-of-work challenge to suspected bot: {...}
+[DEBUG POW] Proof-of-work challenge received: {...}
+[DEBUG POW] Proof-of-work solved, nonce: ...
+✅ Proof-of-work solved, click accepted: {...}
+❌ Invalid proof-of-work solution! Bot blocked: {...}
 ```
 
-### Request Validation
+---
 
-Input validation is handled at the route level:
-
-```javascript
-router.get('/account/:accountId/info', async (req, res) => {
-  const { accountId } = req.params;
-  
-  if (!accountId) {
-    return res.status(400).json({
-      error: 'Account ID is required'
-    });
-  }
-  
-  // Continue with valid request
-});
-```
-
-## Authentication Flow
-
-### OAuth2 Implementation
-
-The authentication system implements the OAuth2 authorization code flow:
-
-```mermaid
-sequenceDiagram
-    participant Client
-    participant Backend
-    participant Google
-    
-    Client->>Backend: GET /auth/url
-    Backend->>Client: Return OAuth URL
-    Client->>Google: Redirect to OAuth URL
-    Google->>Client: Authorization code
-    Client->>Backend: POST /auth/callback with code
-    Backend->>Google: Exchange code for tokens
-    Google->>Backend: Access & refresh tokens
-    Backend->>Client: Success response
-```
-
-### Token Management
-
-```javascript
-// Token storage in file system
-const tokenPath = path.join(__dirname, 'token.json');
-
-// Save tokens
-fs.writeFileSync(tokenPath, JSON.stringify(tokens));
-
-// Load tokens
-const token = JSON.parse(fs.readFileSync(tokenPath, 'utf8'));
-```
-
-### Security Considerations
-
-1. **Token Storage**: Tokens are stored securely in file system
-2. **Token Refresh**: Automatic refresh token handling
-3. **Scope Validation**: Proper OAuth2 scope verification
-4. **Error Handling**: Graceful handling of expired tokens
-
-## Google Ads Integration
-
-All Google Ads credentials (client ID, client secret, developer token, redirect URIs, etc.) **must be set via environment variables**. Do not use client_secret.json or any file-based secrets in production. See .env.example for required variables.
-
-#### Example Required Environment Variables
-```
-GOOGLE_ADS_CLIENT_ID=your-google-oauth-client-id.apps.googleusercontent.com
-GOOGLE_ADS_CLIENT_SECRET=your-google-oauth-client-secret
-GOOGLE_ADS_DEVELOPER_TOKEN=your-google-ads-developer-token
-GOOGLE_ADS_MCC_ID=your-google-ads-mcc-id
-GOOGLE_ADS_REDIRECT_URIS=urn:ietf:wg:oauth:2.0:oob
-```
-
-### API Client Architecture
-
-```javascript
-// Google Ads API Client
-const googleAdsClient = new GoogleAdsApi({
-  client_id: process.env.GOOGLE_ADS_CLIENT_ID,
-  client_secret: process.env.GOOGLE_ADS_CLIENT_SECRET,
-  developer_token: process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-});
-```
-
-### Customer Management
-
-```javascript
-// Customer creation and management
-function getCustomer({ customerId, refreshToken, loginCustomerId }) {
-  return googleAdsClient.Customer({
-    customer_id: customerId,
-    refresh_token: refreshToken,
-    login_customer_id: loginCustomerId,
-  });
-}
-```
-
-### Query Execution
-
-```javascript
-// GAQL (Google Ads Query Language) execution
-async function runQuery({ customerId, refreshToken, loginCustomerId, query }) {
-  const customer = getCustomer({ customerId, refreshToken, loginCustomerId });
-  return await customer.query(query);
-}
-```
-
-### Error Handling
-
-```javascript
-try {
-  const response = await customer.query(query);
-  return response;
-} catch (error) {
-  if (error.message.includes('invalid_grant')) {
-    throw new Error('The refresh token is invalid or expired. Please re-authenticate.');
-  }
-  throw new Error(`Failed to run Google Ads query: ${error.message}`);
-}
-```
-
-## Tracker Module
-
-The **Tracker Module** provides a lightweight, plug-and-play solution for collecting user IP, session, and page analytics from any website.
-
-#### Features
-- IP Address collection (IPv4/IPv6 supported)
-- Session tracking with unique session IDs
-- Automatic page view analytics
-- Device fingerprinting (browser, language, timezone, canvas)
-- IP enrichment (geo, ISP, org via ip-api.com)
-- In-memory device frequency and /16 subnet fraud detection
-- Rule engine for fraud analysis (partial-match allowlist, device frequency, /16 subnet)
-- Step-by-step debug logging for every analysis stage (colored output, only relevant IP/proxy info, no device details)
-- In-memory storage (no database required)
-- Easy integration via a script tag
-- Built-in test page for validation
-
-#### Analysis Pipeline
-1. **Tracking data received**: All tracker data is processed on arrival.
-2. **IP enrichment**: The backend fetches geolocation/ISP info from ip-api.com.
-3. **Device fingerprinting**: A SHA-256 hash is generated from browser, language, timezone, and canvas fingerprint.
-4. **Frequency & subnet tracking**: In-memory counters track device and /16 subnet activity.
-5. **Rule engine**: Applies fraud rules (allowlist, device frequency, /16 subnet fraud) and returns a decision.
-6. **Debug logging**: Each step is logged for transparency. Blocked logs show only IP/proxy info, with colored output.
-
-#### Deployment
-See the main backend [README.md](./README.md) for deployment instructions and best practices.
-
-### API Endpoints
-- `POST /api/v1/tracker` — Receives tracking data from the client script, runs the analysis pipeline, and logs all steps.
-- `GET /api/v1/tracker/stats` — Returns basic in-memory tracking statistics.
-- `GET /api/v1/tracker/script` — Serves the tracking JavaScript (`clickguard-tracker.js`).
-- `GET /api/v1/tracker/test` — Serves a test HTML page (`test-tracker.html`) for local or remote testing.
-
-### Fraud Detection Rules
-- **IP Type Analysis**: Blocks cloud/hosting IPs (OVH, AWS, Google Cloud, etc.)
-- **Device Frequency Analysis**: Blocks if the same device fingerprint is seen >3 times
-- **CIDR Range Analysis**: Blocks if >2 frauds are detected from the same /24 subnet
-
-### File Structure
-```
-modules/tracker/
-├── index.js              # Module exports
-├── routes.js             # API routes
-├── controller.js         # Request handlers (handles IP extraction, etc.)
-├── service.js            # In-memory storage and analytics
-├── public/
-│   ├── clickguard-tracker.js   # Client-side tracking script
-│   └── test-tracker.html       # Test/demo page
-└── README.md             # Module documentation
-```
-
-### Notes
-- For production, serve the backend and script over HTTPS.
-- Update CORS policy as needed for your domains.
-- For local testing, use LAN IP or tunneling (e.g., ngrok) for cross-device access.
-
-For more details, see `modules/tracker/README.md` and the code comments in each file.
-
-#### Tracker Script Endpoint
-
-The tracker script is universal and endpoint-agnostic. It automatically detects the backend endpoint from its own src URL. No manual endpoint configuration is needed. You can use the same script tag on any site, and it will always POST to the correct backend.
-
-## Security Implementation
-
-### Environment Variable Security
-
-```
+For further details, see the implementation in `honeypot.service.js`, `proofOfWork.service.js`, and the main controller.

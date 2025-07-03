@@ -161,6 +161,33 @@ class GoogleAdsService {
     }
     return customerId;
   }
+
+  /**
+   * Block an IP address or CIDR block in Google Ads exclusion list
+   * @param {string} customerId
+   * @param {string} campaignId
+   * @param {string} entry - IP address or CIDR block
+   */
+  async blockIpEntry(customerId, campaignId, entry) {
+    // Determine if entry is a CIDR block or single IP
+    const isCidr = entry.includes('/');
+    const timestamp = new Date().toISOString();
+    
+    // Log the blocking action (no actual API call for now)
+    console.log(`🚫 [GOOGLE ADS BLOCK] ${timestamp} - Blocking ${isCidr ? 'CIDR' : 'IP'}: ${entry}`);
+    console.log(`   Customer: ${customerId || 'N/A'}, Campaign: ${campaignId || 'N/A'}`);
+    
+    // Return a mock result
+    return { 
+      success: true, 
+      blocked: entry, 
+      type: isCidr ? 'CIDR' : 'IP',
+      timestamp,
+      customerId,
+      campaignId,
+      note: 'Logged only - Google Ads API not configured'
+    };
+  }
 }
 
 module.exports = GoogleAdsService; 

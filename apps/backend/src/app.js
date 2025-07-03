@@ -14,11 +14,8 @@ app.use(helmet({
     },
   },
 }));
-// Allow all origins for public tracking endpoints
-app.use(cors({
-  origin: '*',
-  credentials: false
-}));
+// Allow all origins for development or open API
+app.use(cors());
 
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
@@ -38,6 +35,11 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV || 'development'
   });
+});
+
+// Health check endpoint for Render.com
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: process.uptime() });
 });
 
 module.exports = app; 

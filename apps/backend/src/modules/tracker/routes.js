@@ -31,4 +31,7 @@ router.get('/test', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'test-tracker.html'));
 });
 
+// GET /api/v1/tracker/processed-clicks - Get processed click logs (debug)
+router.get('/processed-clicks', controller.getProcessedClicks);
+
 module.exports = router; 

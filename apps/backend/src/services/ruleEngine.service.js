@@ -4,18 +4,6 @@ const path = require('path');
 // Load allowed ISP/org keywords from JSON (now an allowlist)
 const allowedKeywords = JSON.parse(fs.readFileSync(path.join(__dirname, 'cloud_keywords.json'), 'utf8'));
 
-// New allowlist: exact match, case-insensitive
-const allowedISPs = [
-  "Orange Polska S.A.",
-  "P4 Sp. z o.o.",
-  "T-Mobile Polska S.A.",
-  "Polkomtel Sp. z o.o.",
-  "Vectra S.A.",
-  "Inea S.A.",
-  "Toya Sp. z o.o.",
-  "Netia S.A."
-];
-
 // Google Ads detection patterns
 const GOOGLE_ADS_PATTERNS = {
   referrers: [
@@ -59,11 +47,16 @@ function isLocalDevelopmentIP(ipAddress) {
 }
 
 function isAllowedISP(ipInfo) {
-  if (!ipInfo || ipInfo.status !== "success") return false;
+  if (!ipInfo || ipInfo.status !== "success") return true; // Allow if API call failed
   const isp = (ipInfo.isp || "").toLowerCase();
   const org = (ipInfo.org || "").toLowerCase();
-  return allowedISPs.some(allowed =>
-    isp.includes(allowed.toLowerCase()) || org.includes(allowed.toLowerCase())
+  
+  // If both isp and org are undefined/empty, allow the IP
+  if (!isp && !org) return true;
+  
+  // Use the existing allowlist from cloud_keywords.json
+  return allowedKeywords.some(keyword =>
+    isp.includes(keyword.toLowerCase()) || org.includes(keyword.toLowerCase())
   );
 }
 
@@ -71,27 +64,17 @@ function isAllowedISP(ipInfo) {
 // https://your-ngrok-url/test-tracker.html?gclid=EAIaIQobChMI0b2
 
 function isGoogleAdsClick(enrichedClick) {
-    const ref = (enrichedClick.referrer || '').toLowerCase();
-    const query = (enrichedClick.query || '').toLowerCase();
-    const url = (enrichedClick.url || '').toLowerCase();
-    const domain = (enrichedClick.domain || '').toLowerCase();
-    
-    // Check referrer patterns
-    const hasGoogleReferrer = GOOGLE_ADS_PATTERNS.referrers.some(pattern => 
-        ref.includes(pattern)
-    );
-    
-    // Check query parameters (gclid, etc.)
-    const hasClickId = GOOGLE_ADS_PATTERNS.queryParams.some(param => 
-        query.includes(param + '=') || url.includes(param + '=')
-    );
-    
-    // Check domain patterns
-    const hasGoogleDomain = GOOGLE_ADS_PATTERNS.domains.some(pattern => 
-        domain.includes(pattern)
-    );
-    
-    return hasGoogleReferrer || hasClickId || hasGoogleDomain;
+  const ref = (enrichedClick.referrer || '').toLowerCase();
+  const query = (enrichedClick.query || '').toLowerCase();
+  const url = (enrichedClick.url || '').toLowerCase();
+  const domain = (enrichedClick.domain || '').toLowerCase();
+  // Check referrer patterns
+  const hasGoogleReferrer = GOOGLE_ADS_PATTERNS.referrers.some(pattern => ref.includes(pattern));
+  // Check query parameters (gclid, etc.)
+  const hasClickId = GOOGLE_ADS_PATTERNS.queryParams.some(param => query.includes(param + '=') || url.includes(param + '='));
+  // Check domain patterns
+  const hasGoogleDomain = GOOGLE_ADS_PATTERNS.domains.some(pattern => domain.includes(pattern));
+  return hasGoogleReferrer || hasClickId || hasGoogleDomain;
 }
 
 function extractClickId(enrichedClick) {
@@ -109,139 +92,225 @@ function extractClickId(enrichedClick) {
     return null;
 }
 
+function getSubnet(ip, mask) {
+  if (!ip || !ip.includes('.')) return null;
+  const parts = ip.split('.');
+  if (mask === 16) return parts.slice(0, 2).join('.') + '.0.0/16';
+  if (mask === 24) return parts.slice(0, 3).join('.') + '.0/24';
+  return ip + '/32';
+}
+
+function getFingerprintIpPattern(deviceFingerprint) {
+  // Find all recent clicks for this fingerprint in the last 5 minutes
+  const recentClicks = (global.recentClicks || []).filter(click =>
+    click.deviceFingerprint === deviceFingerprint &&
+    Date.now() - new Date(click.timestamp).getTime() < 5 * 60 * 1000
+  );
+  const ips = recentClicks.map(click => click.ipAddress).filter(Boolean);
+  if (ips.length === 0) return { pattern: 'none', ip: null };
+  // Check if all IPs are the same
+  const uniqueIps = [...new Set(ips)];
+  if (uniqueIps.length === 1) return { pattern: 'same', ip: uniqueIps[0] };
+  // Check if all IPs share the same first 3 octets (block /24)
+  const first3 = ips.map(ip => ip.split('.').slice(0, 3).join('.')).filter(Boolean);
+  if (new Set(first3).size === 1) return { pattern: 'same24', ip: first3[0] };
+  // Check if all IPs share the same first 2 octets (block /16)
+  const first2 = ips.map(ip => ip.split('.').slice(0, 2).join('.')).filter(Boolean);
+  if (new Set(first2).size === 1) return { pattern: 'same16', ip: first2[0] };
+  return { pattern: 'mixed', ip: null };
+}
+
 function runRules(enrichedClick, contextData) {
-    // Rule #0: Allow local development IPs
-    const ipAddress = enrichedClick.ipAddress;
-    if (isLocalDevelopmentIP(ipAddress)) {
-        console.debug('Rule #0: Local development IP detected, allowing', { ipAddress });
-        return {
-            decision: 'ALLOW',
-            reason: 'LOCAL_DEVELOPMENT'
-        };
-    }
+  const ipAddress = enrichedClick.ipAddress;
+  const ipInfo = enrichedClick.ipInfo || {};
+  const subnet = contextData.subnet;
+  const deviceFingerprint = enrichedClick.deviceFingerprint;
+  const fingerprintCount = contextData.fingerprintCount || 0;
+  const isGoogleAds = isGoogleAdsClick(enrichedClick);
 
-    // Rule #1: IP Type Analysis (Allowlist)
-    const ipInfo = enrichedClick.ipInfo;
-    const isp = (ipInfo && ipInfo.isp) || '';
-    const org = (ipInfo && ipInfo.org) || '';
-    console.debug('Rule #1: IP Type Analysis (Allowlist)', { isp, org });
-    if (!isAllowedISP(ipInfo)) {
-        console.debug('Rule #1 triggered: BLOCK (not in allowlist)', { isp, org });
-        return {
-            decision: 'BLOCK',
-            reason: 'FRAUD_IP_TYPE_NOT_ALLOWED',
-            target: enrichedClick.ipAddress
-        };
-    }
+  // Rule #0: Allow local development IPs (DISABLED FOR PRODUCTION)
+  // if (isLocalDevelopmentIP(ipAddress)) {
+  //   console.debug('Rule #0: Local development IP detected, allowing', { ipAddress });
+  //   return {
+  //     decision: 'ALLOW',
+  //     reason: 'LOCAL_DEVELOPMENT'
+  //   };
+  // }
 
-    // Rule #2: Google Ads Click Analysis (Enhanced)
-    if (isGoogleAdsClick(enrichedClick)) {
-        const clickId = extractClickId(enrichedClick);
-        const googleAdsCount = contextData.googleAdsClickCount || 0;
-        const fingerprintCount = contextData.fingerprintCount || 0;
-        
-        console.debug('Rule #2: Google Ads Click Analysis', { 
-            googleAdsCount, 
-            fingerprintCount, 
-            clickId,
-            referrer: enrichedClick.referrer,
-            query: enrichedClick.query
-        });
-        
-        // Stricter rules for Google Ads clicks
-        if (googleAdsCount > 2) { // Reduced threshold from 3 to 2
-            console.debug('Rule #2a triggered: BLOCK (Google Ads repeated clicks)', { 
-                fingerprint: enrichedClick.deviceFingerprint, 
-                googleAdsCount 
-            });
-            return {
-                decision: 'BLOCK',
-                reason: 'FRAUD_GOOGLE_ADS_FREQUENCY',
-                target: enrichedClick.deviceFingerprint,
-                details: { googleAdsCount, clickId }
-            };
-        }
-        
-        // Block if same device has too many total clicks (even if not all are Google Ads)
-        if (fingerprintCount > 5) {
-            console.debug('Rule #2b triggered: BLOCK (High device frequency)', { 
-                fingerprint: enrichedClick.deviceFingerprint, 
-                fingerprintCount 
-            });
-            return {
-                decision: 'BLOCK',
-                reason: 'FRAUD_DEVICE_FREQUENCY',
-                target: enrichedClick.deviceFingerprint,
-                details: { fingerprintCount, googleAdsCount, clickId }
-            };
-        }
-        
-        // Block suspicious Google Ads patterns
-        if (clickId && (googleAdsCount > 1 || fingerprintCount > 3)) {
-            console.debug('Rule #2c triggered: BLOCK (Suspicious Google Ads pattern)', { 
-                clickId, 
-                googleAdsCount, 
-                fingerprintCount 
-            });
-            return {
-                decision: 'BLOCK',
-                reason: 'FRAUD_GOOGLE_ADS_SUSPICIOUS',
-                target: enrichedClick.deviceFingerprint,
-                details: { clickId, googleAdsCount, fingerprintCount }
-            };
-        }
-        
-        console.debug('Rule #2: Google Ads click allowed', { googleAdsCount, fingerprintCount, clickId });
+  // Rule #1: Device fingerprint frequency logic for Google Ads clicks only
+  if (isGoogleAds && fingerprintCount > 10) {
+    const patternInfo = getFingerprintIpPattern(deviceFingerprint);
+    if (patternInfo.pattern === 'same') {
+      // All clicks from same IP: block only that IP
+      console.log('🚨 Device fingerprint abuse: same IP, blocking /32', {
+        ipAddress,
+        deviceFingerprint: deviceFingerprint?.slice(0, 8),
+        fingerprintCount,
+        block: ipAddress + '/32'
+      });
+      return {
+        decision: 'BLOCK',
+        reason: 'FRAUD_DEVICE_FREQUENCY',
+        blockType: '/32',
+        target: ipAddress,
+        details: { ipAddress, deviceFingerprint: deviceFingerprint?.slice(0, 8), fingerprintCount, block: ipAddress + '/32' }
+      };
+    } else if (patternInfo.pattern === 'same24') {
+      // Same first 3 octets, last changes: block /24
+      const subnet24 = getSubnet(ipAddress, 24);
+      console.log('🚨 Device fingerprint abuse: /24 pattern, blocking /24', {
+        ipAddress,
+        deviceFingerprint: deviceFingerprint?.slice(0, 8),
+        fingerprintCount,
+        block: subnet24
+      });
+      return {
+        decision: 'BLOCK',
+        reason: 'FRAUD_DEVICE_FREQUENCY',
+        blockType: '/24',
+        target: subnet24,
+        details: { ipAddress, deviceFingerprint: deviceFingerprint?.slice(0, 8), fingerprintCount, block: subnet24 }
+      };
+    } else if (patternInfo.pattern === 'same16') {
+      // Same first 2 octets, last 2 change: block /16
+      const subnet16 = getSubnet(ipAddress, 16);
+      console.log('🚨 Device fingerprint abuse: /16 pattern, blocking /16', {
+        ipAddress,
+        deviceFingerprint: deviceFingerprint?.slice(0, 8),
+        fingerprintCount,
+        block: subnet16
+      });
+      return {
+        decision: 'BLOCK',
+        reason: 'FRAUD_DEVICE_FREQUENCY',
+        blockType: '/16',
+        target: subnet16,
+        details: { ipAddress, deviceFingerprint: deviceFingerprint?.slice(0, 8), fingerprintCount, block: subnet16 }
+      };
     } else {
-        // For non-Google Ads clicks, apply standard frequency rules
-        const fingerprintCount = contextData.fingerprintCount || 0;
-        if (fingerprintCount > 10) { // Higher threshold for non-Google Ads
-            console.debug('Rule #2d triggered: BLOCK (High non-Google Ads frequency)', { 
-                fingerprint: enrichedClick.deviceFingerprint, 
-                fingerprintCount 
-            });
-            return {
-                decision: 'BLOCK',
-                reason: 'FRAUD_DEVICE_FREQUENCY',
-                target: enrichedClick.deviceFingerprint,
-                details: { fingerprintCount }
-            };
-        }
-        console.debug('Rule #2: Non-Google Ads click allowed', { fingerprintCount });
+      // Mixed pattern, fallback to blocking only IP
+      console.log('🚨 Device fingerprint abuse: mixed pattern, blocking /32', {
+        ipAddress,
+        deviceFingerprint: deviceFingerprint?.slice(0, 8),
+        fingerprintCount,
+        block: ipAddress + '/32'
+      });
+      return {
+        decision: 'BLOCK',
+        reason: 'FRAUD_DEVICE_FREQUENCY',
+        blockType: '/32',
+        target: ipAddress,
+        details: { ipAddress, deviceFingerprint: deviceFingerprint?.slice(0, 8), fingerprintCount, block: ipAddress + '/32' }
+      };
     }
-
-    // Rule #3: CIDR Range Analysis (Enhanced for Google Ads)
-    const subnetFraudCount = contextData.subnetFraudCount || 0;
-    const isGoogleAds = isGoogleAdsClick(enrichedClick);
-    const subnetThreshold = isGoogleAds ? 1 : 2; // Lower threshold for Google Ads
-    
-    console.debug('Rule #3: CIDR Range Analysis', { 
-        subnet: contextData.subnet, 
-        subnetFraudCount, 
-        isGoogleAds, 
-        threshold: subnetThreshold 
+  } else if (isGoogleAds) {
+    console.log('✅ Device fingerprint frequency OK (Google Ads):', { 
+      ipAddress, 
+      deviceFingerprint: deviceFingerprint?.slice(0, 8),
+      fingerprintCount,
+      threshold: 10
     });
-    
-    if (subnetFraudCount >= subnetThreshold) {
-        console.debug('Rule #3 triggered: BLOCK', { 
-            subnet: contextData.subnet, 
-            subnetFraudCount, 
-            threshold: subnetThreshold 
-        });
-        return {
-            decision: 'BLOCK',
-            reason: 'FRAUD_CIDR_RANGE',
-            target: contextData.subnet,
-            details: { subnetFraudCount, threshold: subnetThreshold, isGoogleAds }
-        };
-    }
+  }
 
-    // Default: Allow
-    console.debug('No rules triggered: ALLOW');
+  // Rule #2: Check if IP is in allowed ISP list
+  if (isAllowedISP(ipInfo)) {
+    console.debug('Rule #2: IP is in allowed ISP list, allowing', { 
+      ipAddress, 
+      isp: ipInfo.isp, 
+      org: ipInfo.org 
+    });
     return {
-        decision: 'ALLOW',
-        reason: 'OK'
+      decision: 'ALLOW',
+      reason: 'ALLOWED_ISP'
     };
+  }
+
+  // Rule #3: If ISP info is unavailable, check frequency
+  if (!ipInfo.isp && !ipInfo.org) {
+    console.debug('Rule #3: ISP info unavailable, checking frequency', { ipAddress });
+    
+    // Check recent clicks from this IP in the last 5 minutes
+    const recentClicks = (global.recentClicks || []).filter(click =>
+      click.ipAddress === ipAddress &&
+      Date.now() - new Date(click.timestamp).getTime() < 5 * 60 * 1000
+    );
+    
+    if (recentClicks.length > 3) { // Block if more than 3 clicks in 5 minutes (single IP only)
+      console.debug('Rule #3: High frequency detected, blocking single IP', { 
+        ipAddress, 
+        clickCount: recentClicks.length
+      });
+      return {
+        decision: 'BLOCK',
+        reason: 'HIGH_FREQUENCY_NO_ISP',
+        blockType: '/32',
+        target: ipAddress,
+        details: { ipAddress, clickCount: recentClicks.length }
+      };
+    }
+    
+    console.debug('Rule #3: Frequency OK, allowing', { ipAddress, clickCount: recentClicks.length });
+    return {
+      decision: 'ALLOW',
+      reason: 'FREQUENCY_OK_NO_ISP'
+    };
+  }
+
+  // Rule #4: Block everything else with /16 network blocking
+  console.debug('Rule #4: IP not in allowlist, blocking /16', { 
+    ipAddress, 
+    isp: ipInfo.isp, 
+    org: ipInfo.org, 
+    subnet 
+  });
+  return {
+    decision: 'BLOCK',
+    reason: 'NOT_ALLOWED_ISP',
+    blockType: '/16',
+    target: subnet,
+    details: { ipAddress, isp: ipInfo.isp, org: ipInfo.org, subnet }
+  };
+}
+
+// Honeypot detection function
+function detectHoneypot(enrichedClick) {
+    // Check for honeypot indicators
+    const honeypotIndicators = [];
+    
+    // 1. Check for hidden form fields or suspicious DOM elements
+    if (enrichedClick.hiddenFields && enrichedClick.hiddenFields.length > 0) {
+        honeypotIndicators.push('hidden_fields_detected');
+    }
+    
+    // 2. Check for suspicious timing patterns (too fast clicks)
+    if (enrichedClick.clickSpeed && enrichedClick.clickSpeed < 100) { // Less than 100ms
+        honeypotIndicators.push('suspicious_timing');
+    }
+    
+    // 3. Check for missing or suspicious user behavior
+    if (!enrichedClick.mouseMovements || enrichedClick.mouseMovements.length < 2) {
+        honeypotIndicators.push('no_mouse_movement');
+    }
+    
+    // 4. Check for suspicious user agent patterns
+    if (enrichedClick.userAgent && (
+        enrichedClick.userAgent.includes('bot') || 
+        enrichedClick.userAgent.includes('crawler') ||
+        enrichedClick.userAgent.includes('spider')
+    )) {
+        honeypotIndicators.push('bot_user_agent');
+    }
+    
+    // 5. Check for missing referrer (direct access to tracking page)
+    if (!enrichedClick.referrer || enrichedClick.referrer === '') {
+        honeypotIndicators.push('no_referrer');
+    }
+    
+    // Return honeypot details if any indicators found
+    return honeypotIndicators.length > 0 ? {
+        indicators: honeypotIndicators,
+        count: honeypotIndicators.length
+    } : null;
 }
 
 module.exports = { runRules }; 

@@ -1,6 +1,10 @@
 const trackerService = require('./service');
 const requestIp = require('request-ip');
 const analysisService = require('../../services/analysis.service');
+const { processedClicks } = require('../../workers/clickProcessor.worker');
+const honeypotService = require('./honeypot.service');
+const proofOfWorkService = require('./proofOfWork.service');
+const ClickLog = require('../../models/ClickLog');
 
 /**
  * Handle tracking data from client-side script
@@ -9,9 +13,91 @@ const handleTrackingData = async (req, res) => {
     try {
         const trackingData = req.body;
         const clientIP = requestIp.getClientIp(req);
+        // Optionally extract customerId and campaignId from request (if present)
+        const customerId = trackingData.customerId || null;
+        const campaignId = trackingData.campaignId || null;
+        
+        // Honeypot detection (modular)
+        if (honeypotService.checkHoneypot(trackingData)) {
+            const powChallenge = honeypotService.generateChallenge(trackingData.sessionId);
+            console.warn('🪤 Honeypot triggered! Sending proof-of-work challenge to suspected bot:', {
+                sessionId: trackingData.sessionId,
+                ip: clientIP,
+                domain: trackingData.domain,
+                honeypot: trackingData.honeypot,
+                ...powChallenge
+            });
+            return res.status(403).json({
+                success: false,
+                message: 'Bot detected (honeypot). Proof-of-work required.',
+                reason: 'HONEYPOT_TRIGGERED',
+                pow: powChallenge
+            });
+        }
+        // Proof-of-work solution verification (modular)
+        if (trackingData.pow) {
+            const valid = proofOfWorkService.verifyProofOfWork(trackingData.pow, trackingData.sessionId);
+            if (!valid) {
+                console.warn('❌ Invalid proof-of-work solution! Bot blocked:', {
+                    sessionId: trackingData.sessionId,
+                    ip: clientIP,
+                    domain: trackingData.domain,
+                    pow: trackingData.pow
+                });
+                return res.status(403).json({
+                    success: false,
+                    message: 'Invalid proof-of-work solution',
+                    reason: 'POW_INVALID'
+                });
+            } else {
+                console.log('✅ Proof-of-work solved, click accepted:', {
+                    sessionId: trackingData.sessionId,
+                    ip: clientIP,
+                    domain: trackingData.domain,
+                    pow: trackingData.pow
+                });
+                // Continue processing as normal
+            }
+        }
+        
+        // Enhanced detailed logging for debugging
+        console.log('🔎 Click details:', {
+            method: req.method,
+            url: trackingData.url,
+            query: trackingData.query,
+            gclid: trackingData.gclid,
+            gclsrc: trackingData.gclsrc,
+            utm_source: trackingData.utm_source,
+            utm_medium: trackingData.utm_medium,
+            utm_campaign: trackingData.utm_campaign,
+            utm_term: trackingData.utm_term,
+            utm_content: trackingData.utm_content,
+            referrer: trackingData.referrer || req.get('referer'),
+            domain: trackingData.domain
+        });
         
         // Step 1: Log raw click received (as per technical plan)
         console.log('Raw click received:', { sessionId: trackingData.sessionId, ip: clientIP, domain: trackingData.domain });
+        
+        // Check if this is a Google Ads click and log specifically
+        const isGoogleAdsClick = isGoogleAdsTrackingData(trackingData);
+        if (isGoogleAdsClick) {
+            console.log('🚨 GOOGLE ADS CLICK DETECTED:', {
+                sessionId: trackingData.sessionId,
+                ip: clientIP,
+                domain: trackingData.domain,
+                url: trackingData.url,
+                referrer: trackingData.referrer,
+                query: trackingData.query,
+                gclid: trackingData.gclid,
+                utm_source: trackingData.utm_source,
+                utm_medium: trackingData.utm_medium,
+                utm_campaign: trackingData.utm_campaign,
+                customerId,
+                campaignId,
+                timestamp: new Date().toISOString()
+            });
+        }
         
         // Add IP address to tracking data
         const enrichedData = {
@@ -28,18 +114,53 @@ const handleTrackingData = async (req, res) => {
             }
         };
 
-        // Step 2: Pass to analysis service
-        await analysisService.processClick(enrichedData);
+        // Step 2: Pass to analysis service (with customerId/campaignId)
+        await analysisService.processClick(enrichedData, customerId, campaignId);
 
         // Process the tracking data (store in memory for now)
         const result = await trackerService.processTrackingData(enrichedData);
         
+        // Ensure isGoogleAds is always a Boolean
+        const isGoogleAdsClickBool = !!isGoogleAdsClick;
+        // Save click to MongoDB
+        try {
+            await ClickLog.create({
+                timestamp: new Date(),
+                sessionId: trackingData.sessionId,
+                ipAddress: enrichedData.ipAddress,
+                deviceFingerprint: enrichedData.deviceFingerprint,
+                fingerprintCount: enrichedData.fingerprintCount,
+                isGoogleAds: isGoogleAdsClickBool,
+                decision: enrichedData.decision,
+                reason: enrichedData.reason,
+                block_type: enrichedData.block_type,
+                blocked_entry: enrichedData.blocked_entry,
+                honeypot: trackingData.honeypot,
+                pow: trackingData.pow,
+                method: req.method,
+                url: trackingData.url,
+                query: trackingData.query,
+                gclid: trackingData.gclid,
+                gclsrc: trackingData.gclsrc,
+                utm_source: trackingData.utm_source,
+                utm_medium: trackingData.utm_medium,
+                utm_campaign: trackingData.utm_campaign,
+                utm_term: trackingData.utm_term,
+                utm_content: trackingData.utm_content,
+                referrer: trackingData.referrer || req.get('referer'),
+                domain: trackingData.domain
+            });
+        } catch (err) {
+            console.error('❌ Failed to save click log to MongoDB:', err);
+        }
+
         res.status(200).json({
             success: true,
             message: 'Tracking data received successfully',
             sessionId: enrichedData.sessionId,
             timestamp: enrichedData.serverTimestamp,
-            ipAddress: enrichedData.ipAddress
+            ipAddress: enrichedData.ipAddress,
+            isGoogleAds: isGoogleAdsClick
         });
         
     } catch (error) {
@@ -51,6 +172,22 @@ const handleTrackingData = async (req, res) => {
         });
     }
 };
+
+/**
+ * Check if tracking data contains Google Ads parameters
+ */
+function isGoogleAdsTrackingData(trackingData) {
+    const url = (trackingData.url || '').toLowerCase();
+    const query = (trackingData.query || '').toLowerCase();
+    const referrer = (trackingData.referrer || '').toLowerCase();
+    
+    // Check for Google Ads parameters
+    const hasGclid = trackingData.gclid || query.includes('gclid=') || url.includes('gclid=');
+    const hasUtmSource = trackingData.utm_source || query.includes('utm_source=') || url.includes('utm_source=');
+    const hasGoogleReferrer = referrer.includes('google.com') || referrer.includes('googleadservices.com');
+    
+    return hasGclid || hasUtmSource || hasGoogleReferrer;
+}
 
 /**
  * Get basic tracking statistics (in-memory)
@@ -157,10 +294,21 @@ const getGoogleAdsStats = async (req, res) => {
     }
 };
 
+/**
+ * Get processed clicks (debug endpoint)
+ */
+const getProcessedClicks = async (req, res) => {
+    res.status(200).json({
+        success: true,
+        data: processedClicks
+    });
+};
+
 module.exports = {
     handleTrackingData,
     getTrackingStats,
     getRecentClicks,
     getClickDetails,
-    getGoogleAdsStats
+    getGoogleAdsStats,
+    getProcessedClicks
 }; 

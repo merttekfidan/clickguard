@@ -10,6 +10,7 @@ import AuthError from "./pages/AuthError";
 import ConnectAccount from "./pages/ConnectAccount";
 import GoogleAdsAuthDebug from "./pages/GoogleAdsAuthDebug";
 import TrackingDashboard from "./pages/TrackingDashboard";
+import AdminDashboard from "./pages/AdminDashboard";
 import React, { useEffect, useState } from 'react';
 
 const queryClient = new QueryClient();
@@ -53,6 +54,7 @@ const App = () => (
           <Route path="/connect-account" element={<ConnectAccount />} />
           <Route path="/GoogleAdsAuthDebug" element={<GoogleAdsAuthDebug />} />
           <Route path="/tracking" element={<TrackingDashboard />} />
+          <Route path="/admin" element={<AdminDashboard />} />
           {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
           <Route path="*" element={<NotFound />} />
         </Routes>

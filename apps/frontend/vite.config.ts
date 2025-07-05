@@ -16,12 +16,12 @@ export default defineConfig(({ mode }) => ({
     outDir: 'dist',
     sourcemap: mode === 'development',
     rollupOptions: {
-      output: {
-        manualChunks: {
-          vendor: ['react', 'react-dom'],
-          ui: ['@radix-ui/react-dialog', '@radix-ui/react-button', '@radix-ui/react-card']
+              output: {
+          manualChunks: {
+            vendor: ['react', 'react-dom'],
+            ui: ['@radix-ui/react-dialog', '@radix-ui/react-slot']
+          }
         }
-      }
     }
   },
   plugins: [

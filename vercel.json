@@ -2,15 +2,15 @@
   "version": 2,
   "builds": [
     {
-      "src": "package.json",
+      "src": "apps/frontend/package.json",
       "use": "@vercel/static-build",
       "config": {
-        "distDir": "dist"
+        "distDir": "apps/frontend/dist"
       }
     }
   ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/dist/index.html" }
+    { "source": "/(.*)", "destination": "/apps/frontend/dist/index.html" }
   ],
   "env": {
     "NODE_ENV": "production"

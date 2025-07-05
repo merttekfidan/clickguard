@@ -21,10 +21,16 @@ app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
+// Initialize Passport for authentication
+const authService = require('./modules/auth/auth.service');
+app.use(authService.initializePassport());
+
 // Register module routes
+const authRoutes = require('./modules/auth/auth.routes');
 const googleAdsRoutes = require('./modules/google-ads/routes');
 const trackerRoutes = require('./modules/tracker/routes');
 
+app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/google-ads', googleAdsRoutes);
 app.use('/api/v1/tracker', trackerRoutes);
 

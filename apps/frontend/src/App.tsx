@@ -11,6 +11,9 @@ import ConnectAccount from "./pages/ConnectAccount";
 import GoogleAdsAuthDebug from "./pages/GoogleAdsAuthDebug";
 import TrackingDashboard from "./pages/TrackingDashboard";
 import AdminDashboard from "./pages/AdminDashboard";
+import Login from "./pages/Login";
+import ProtectedRoute from "./components/ProtectedRoute";
+import { AuthProvider } from "./hooks/useAuth";
 import React, { useEffect, useState } from 'react';
 
 const queryClient = new QueryClient();
@@ -43,22 +46,32 @@ const DarkModeToggle: React.FC = () => {
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
-      <DarkModeToggle />
-      <Toaster />
-      <Sonner />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Index />} />
-          <Route path="/auth/success" element={<AuthSuccess />} />
-          <Route path="/auth/error" element={<AuthError />} />
-          <Route path="/connect-account" element={<ConnectAccount />} />
-          <Route path="/GoogleAdsAuthDebug" element={<GoogleAdsAuthDebug />} />
-          <Route path="/tracking" element={<TrackingDashboard />} />
-          <Route path="/admin" element={<AdminDashboard />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+      <AuthProvider>
+        <DarkModeToggle />
+        <Toaster />
+        <Sonner />
+        <BrowserRouter>
+          <Routes>
+            <Route path="/" element={<Index />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/auth/success" element={<AuthSuccess />} />
+            <Route path="/auth/error" element={<AuthError />} />
+            <Route path="/connect-account" element={<ConnectAccount />} />
+            <Route path="/GoogleAdsAuthDebug" element={<GoogleAdsAuthDebug />} />
+            <Route path="/tracking" element={<TrackingDashboard />} />
+            <Route 
+              path="/admin" 
+              element={
+                <ProtectedRoute requireAdmin>
+                  <AdminDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );

@@ -12,7 +12,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/apps/frontend/dist/$1"
+      "dest": "/apps/frontend/dist/index.html"
     }
   ],
   "env": {

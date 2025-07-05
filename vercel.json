@@ -2,7 +2,8 @@
   "version": 2,
   "builds": [
     {
-      "src": "apps/frontend/package.json"
+      "src": "apps/frontend/package.json",
+      "use": "@vercel/static-build"
     }
   ],
   "rewrites": [

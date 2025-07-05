@@ -1,6 +1,7 @@
 const express = require('express');
 const passport = require('passport');
 const authController = require('./auth.controller');
+const jwtAuth = require('./jwt.middleware');
 
 const router = express.Router();
 
@@ -32,6 +33,6 @@ router.get('/google/callback',
 router.get('/logout', authController.logout);
 
 // Get current user info
-router.get('/me', authController.getCurrentUser);
+router.get('/me', jwtAuth, authController.getCurrentUser);
 
 module.exports = router; 

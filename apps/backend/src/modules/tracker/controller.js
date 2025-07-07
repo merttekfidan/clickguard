@@ -1,188 +1,31 @@
 const trackerService = require('./service');
 const requestIp = require('request-ip');
-const analysisService = require('../../services/analysis.service');
-const { processedClicks } = require('../../workers/clickProcessor.worker');
-const honeypotService = require('./honeypot.service');
-const proofOfWorkService = require('./proofOfWork.service');
 const ClickLog = require('../../models/ClickLog');
+const logBuilder = require('../../services/logBuilder.service');
+const ruleEngine = require('../../services/ruleEngine.service');
+const enrichmentService = require('../../services/enrichment.service');
 
 /**
  * Handle tracking data from client-side script
  */
 const handleTrackingData = async (req, res) => {
     try {
-        const trackingData = req.body;
+        const rawData = req.body;
         const clientIP = requestIp.getClientIp(req);
-        // Optionally extract customerId and campaignId from request (if present)
-        const customerId = trackingData.customerId || null;
-        const campaignId = trackingData.campaignId || null;
-        
-        // Honeypot detection (modular)
-        if (honeypotService.checkHoneypot(trackingData)) {
-            const powChallenge = honeypotService.generateChallenge(trackingData.sessionId);
-            console.warn('🪤 Honeypot triggered! Sending proof-of-work challenge to suspected bot:', {
-                sessionId: trackingData.sessionId,
-                ip: clientIP,
-                domain: trackingData.domain,
-                honeypot: trackingData.honeypot,
-                ...powChallenge
-            });
-            return res.status(403).json({
-                success: false,
-                message: 'Bot detected (honeypot). Proof-of-work required.',
-                reason: 'HONEYPOT_TRIGGERED',
-                pow: powChallenge
-            });
-        }
-        // Proof-of-work solution verification (modular)
-        if (trackingData.pow) {
-            const valid = proofOfWorkService.verifyProofOfWork(trackingData.pow, trackingData.sessionId);
-            if (!valid) {
-                console.warn('❌ Invalid proof-of-work solution! Bot blocked:', {
-                    sessionId: trackingData.sessionId,
-                    ip: clientIP,
-                    domain: trackingData.domain,
-                    pow: trackingData.pow
-                });
-                return res.status(403).json({
-                    success: false,
-                    message: 'Invalid proof-of-work solution',
-                    reason: 'POW_INVALID'
-                });
-            } else {
-                console.log('✅ Proof-of-work solved, click accepted:', {
-                    sessionId: trackingData.sessionId,
-                    ip: clientIP,
-                    domain: trackingData.domain,
-                    pow: trackingData.pow
-                });
-                // Continue processing as normal
-            }
-        }
-        
-        // Enhanced detailed logging for debugging
-        console.log('🔎 Click details:', {
-            method: req.method,
-            url: trackingData.url,
-            query: trackingData.query,
-            gclid: trackingData.gclid,
-            gclsrc: trackingData.gclsrc,
-            utm_source: trackingData.utm_source,
-            utm_medium: trackingData.utm_medium,
-            utm_campaign: trackingData.utm_campaign,
-            utm_term: trackingData.utm_term,
-            utm_content: trackingData.utm_content,
-            referrer: trackingData.referrer || req.get('referer'),
-            domain: trackingData.domain
-        });
-        
-        // Step 1: Log raw click received (as per technical plan)
-        console.log('Raw click received:', { sessionId: trackingData.sessionId, ip: clientIP, domain: trackingData.domain });
-        
-        // Check if this is a Google Ads click and log specifically
-        const isGoogleAdsClick = isGoogleAdsTrackingData(trackingData);
-        if (isGoogleAdsClick) {
-            console.log('🚨 GOOGLE ADS CLICK DETECTED:', {
-                sessionId: trackingData.sessionId,
-                ip: clientIP,
-                domain: trackingData.domain,
-                url: trackingData.url,
-                referrer: trackingData.referrer,
-                query: trackingData.query,
-                gclid: trackingData.gclid,
-                utm_source: trackingData.utm_source,
-                utm_medium: trackingData.utm_medium,
-                utm_campaign: trackingData.utm_campaign,
-                customerId,
-                campaignId,
-                timestamp: new Date().toISOString()
-            });
-        }
-        
-        // Add IP address to tracking data
-        const enrichedData = {
-            ...trackingData,
-            ipAddress: clientIP,
-            serverTimestamp: new Date().toISOString(),
-            userAgent: req.headers['user-agent'],
-            acceptLanguage: req.headers['accept-language'],
-            headers: {
-                'x-forwarded-for': req.headers['x-forwarded-for'],
-                'x-real-ip': req.headers['x-real-ip'],
-                'x-forwarded-proto': req.headers['x-forwarded-proto'],
-                'x-forwarded-host': req.headers['x-forwarded-host']
-            }
-        };
-
-        // Debug: Log the client IP being enriched
-        console.log('🌍 Enriching IP:', clientIP);
-
-        // Step 2: Pass to analysis service (with customerId/campaignId)
-        const analysisResult = await analysisService.processClick(enrichedData, customerId, campaignId);
-
-        // Debug: Log the ipInfo result
-        if (enrichedData.ipInfo) {
-            console.log('🌐 ipInfo result:', enrichedData.ipInfo);
-        } else if (analysisResult && analysisResult.click && analysisResult.click.ipInfo) {
-            console.log('🌐 ipInfo result:', analysisResult.click.ipInfo);
-        } else {
-            console.log('🌐 ipInfo result: <none>');
-        }
-
-        // Process the tracking data (store in memory for now)
-        const result = await trackerService.processTrackingData(enrichedData);
-        
-        // Ensure isGoogleAds is always a Boolean
-        const isGoogleAdsClickBool = !!isGoogleAdsClick;
-        // Save click to MongoDB
-        try {
-            await ClickLog.create({
-                timestamp: new Date(),
-                sessionId: trackingData.sessionId,
-                ipAddress: enrichedData.ipAddress,
-                deviceFingerprint: enrichedData.deviceFingerprint,
-                fingerprintCount: enrichedData.fingerprintCount,
-                isGoogleAds: isGoogleAdsClickBool,
-                decision: enrichedData.decision,
-                reason: enrichedData.reason,
-                block_type: enrichedData.block_type,
-                blocked_entry: enrichedData.blocked_entry,
-                honeypot: trackingData.honeypot,
-                pow: trackingData.pow,
-                method: req.method,
-                url: trackingData.url,
-                query: trackingData.query,
-                gclid: trackingData.gclid,
-                gclsrc: trackingData.gclsrc,
-                utm_source: trackingData.utm_source,
-                utm_medium: trackingData.utm_medium,
-                utm_campaign: trackingData.utm_campaign,
-                utm_term: trackingData.utm_term,
-                utm_content: trackingData.utm_content,
-                referrer: trackingData.referrer || req.get('referer'),
-                domain: trackingData.domain,
-                ipInfo: enrichedData.ipInfo // Add VPN/ISP info
-            });
-        } catch (err) {
-            console.error('❌ Failed to save click log to MongoDB:', err);
-        }
-
-        res.status(200).json({
-            success: true,
-            message: 'Tracking data received successfully',
-            sessionId: enrichedData.sessionId,
-            timestamp: enrichedData.serverTimestamp,
-            ipAddress: enrichedData.ipAddress,
-            isGoogleAds: isGoogleAdsClick
-        });
-        
+        // 1. Enrich data using enrichmentService
+        const enrichedData = await enrichmentService.enrich(rawData, clientIP);
+        // 2. Run rule engine
+        const ruleResult = await ruleEngine.runRules(enrichedData, {/* contextData if needed */});
+        // 3. Build log object
+        const logObject = logBuilder.build({ ...enrichedData, ...ruleResult });
+        // 4. Save to DB
+        await ClickLog.create(logObject);
+        // 5. Update in-memory stats (removed, no longer needed)
+        // 6. Respond to client
+        res.json({ success: true });
     } catch (error) {
-        console.error('Error processing tracking data:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error',
-            error: process.env.NODE_ENV === 'development' ? error.message : 'An error occurred'
-        });
+        console.error('Error in handleTrackingData:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
 };
 
@@ -240,7 +83,7 @@ const getRecentClicks = async (req, res) => {
             }
         });
         
-        const clicks = analysisService.getRecentClicks(limit, Object.keys(filter).length > 0 ? filter : null);
+        const clicks = await ClickLog.find(Object.keys(filter).length > 0 ? filter : null).sort({ timestamp: -1 }).limit(limit);
         
         res.status(200).json({
             success: true,
@@ -266,7 +109,7 @@ const getRecentClicks = async (req, res) => {
 const getClickDetails = async (req, res) => {
     try {
         const { clickId } = req.params;
-        const click = analysisService.getClickById(clickId);
+        const click = await ClickLog.findById(clickId);
         
         if (!click) {
             return res.status(404).json({
@@ -293,10 +136,18 @@ const getClickDetails = async (req, res) => {
  */
 const getGoogleAdsStats = async (req, res) => {
     try {
-        const stats = analysisService.getGoogleAdsStats();
+        const clicks = await ClickLog.find({ isGoogleAds: true });
+        const totalClicks = await ClickLog.countDocuments();
+        const googleAdsClicks = clicks.length;
+        const googleAdsPercentage = totalClicks > 0 ? (googleAdsClicks / totalClicks) * 100 : 0;
+
         res.status(200).json({
             success: true,
-            data: stats
+            data: {
+                totalClicks,
+                googleAdsClicks,
+                googleAdsPercentage
+            }
         });
     } catch (error) {
         console.error('Error getting Google Ads stats:', error);
@@ -312,7 +163,7 @@ const getGoogleAdsStats = async (req, res) => {
  */
 const getProcessedClicks = async (req, res) => {
     try {
-        const clicks = processedClicks.slice(0, 20);
+        const clicks = await ClickLog.find({ isProcessed: true }).sort({ timestamp: -1 }).limit(20);
         res.status(200).json({
             success: true,
             data: clicks

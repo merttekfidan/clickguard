@@ -1,8 +1,10 @@
 const fs = require('fs');
 const path = require('path');
+const ClickLog = require('../models/ClickLog');
+const BlockedIP = require('../models/BlockedIP');
 
-// Load allowed ISP/org keywords from JSON (now an allowlist)
-const allowedKeywords = JSON.parse(fs.readFileSync(path.join(__dirname, 'cloud_keywords.json'), 'utf8'));
+// Restore allowlist from allowed_isp.json
+const allowedKeywords = JSON.parse(fs.readFileSync(path.join(__dirname, 'allowed_isp.json'), 'utf8'));
 
 // Google Ads detection patterns
 const GOOGLE_ADS_PATTERNS = {
@@ -47,14 +49,8 @@ function isLocalDevelopmentIP(ipAddress) {
 }
 
 function isAllowedISP(ipInfo) {
-  if (!ipInfo || ipInfo.status !== "success") return true; // Allow if API call failed
-  const isp = (ipInfo.isp || "").toLowerCase();
-  const org = (ipInfo.org || "").toLowerCase();
-  
-  // If both isp and org are undefined/empty, allow the IP
-  if (!isp && !org) return true;
-  
-  // Use the existing allowlist from cloud_keywords.json
+  const isp = (ipInfo.isp || '').toLowerCase();
+  const org = (ipInfo.org || '').toLowerCase();
   return allowedKeywords.some(keyword =>
     isp.includes(keyword.toLowerCase()) || org.includes(keyword.toLowerCase())
   );
@@ -68,12 +64,14 @@ function isGoogleAdsClick(enrichedClick) {
   const query = (enrichedClick.query || '').toLowerCase();
   const url = (enrichedClick.url || '').toLowerCase();
   const domain = (enrichedClick.domain || '').toLowerCase();
+  
   // Check referrer patterns
   const hasGoogleReferrer = GOOGLE_ADS_PATTERNS.referrers.some(pattern => ref.includes(pattern));
   // Check query parameters (gclid, etc.)
   const hasClickId = GOOGLE_ADS_PATTERNS.queryParams.some(param => query.includes(param + '=') || url.includes(param + '='));
   // Check domain patterns
   const hasGoogleDomain = GOOGLE_ADS_PATTERNS.domains.some(pattern => domain.includes(pattern));
+  
   return hasGoogleReferrer || hasClickId || hasGoogleDomain;
 }
 
@@ -120,13 +118,34 @@ function getFingerprintIpPattern(deviceFingerprint) {
   return { pattern: 'mixed', ip: null };
 }
 
-function runRules(enrichedClick, contextData) {
+async function runRules(enrichedClick, contextData) {
   const ipAddress = enrichedClick.ipAddress;
   const ipInfo = enrichedClick.ipInfo || {};
   const subnet = contextData.subnet;
   const deviceFingerprint = enrichedClick.deviceFingerprint;
-  const fingerprintCount = contextData.fingerprintCount || 0;
+  let fingerprintCount = 0;
   const isGoogleAds = isGoogleAdsClick(enrichedClick);
+
+  // 1. Fast block check: is IP/subnet in BlockedIP?
+  const blocked = await BlockedIP.findOne({ ip: ipAddress });
+  if (blocked) {
+    return {
+      decision: 'BLOCK',
+      reason: 'BLOCKED_IP',
+      blockType: '/32',
+      target: ipAddress,
+      details: { ipAddress, blockReason: blocked.reason }
+    };
+  }
+
+  // 2. Fingerprint frequency check via MongoDB
+  if (deviceFingerprint) {
+    fingerprintCount = await ClickLog.countDocuments({
+      deviceFingerprint,
+      timestamp: { $gte: new Date(Date.now() - 5 * 60 * 1000) }
+    });
+  }
+  contextData.fingerprintCount = fingerprintCount;
 
   // Rule #0: Allow local development IPs (DISABLED FOR PRODUCTION)
   // if (isLocalDevelopmentIP(ipAddress)) {
@@ -205,8 +224,7 @@ function runRules(enrichedClick, contextData) {
     }
   } else if (isGoogleAds) {
     console.log('✅ Device fingerprint frequency OK (Google Ads):', { 
-      ipAddress, 
-      deviceFingerprint: deviceFingerprint?.slice(0, 8),
+      ipAddress,
       fingerprintCount,
       threshold: 10
     });
@@ -214,11 +232,7 @@ function runRules(enrichedClick, contextData) {
 
   // Rule #2: Check if IP is in allowed ISP list
   if (isAllowedISP(ipInfo)) {
-    console.debug('Rule #2: IP is in allowed ISP list, allowing', { 
-      ipAddress, 
-      isp: ipInfo.isp, 
-      org: ipInfo.org 
-    });
+    console.debug('Rule #2: IP is in allowed ISP list, allowing', ipAddress);
     return {
       decision: 'ALLOW',
       reason: 'ALLOWED_ISP'
@@ -258,10 +272,7 @@ function runRules(enrichedClick, contextData) {
 
   // Rule #4: Block everything else with /16 network blocking
   console.debug('Rule #4: IP not in allowlist, blocking /16', { 
-    ipAddress, 
-    isp: ipInfo.isp, 
-    org: ipInfo.org, 
-    subnet 
+    ipAddress
   });
   return {
     decision: 'BLOCK',
@@ -313,4 +324,7 @@ function detectHoneypot(enrichedClick) {
     } : null;
 }
 
-module.exports = { runRules }; 
+module.exports = {
+  runRules,
+  isGoogleAdsClick
+}; 

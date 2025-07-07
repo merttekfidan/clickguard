@@ -33,6 +33,7 @@ const RealtimeLogsTab = () => {
       if (filterDecision !== 'all') params.decision = filterDecision;
       
       const result = await apiService.getAdminLogs(params);
+      console.log('Raw decision values:', result.logs.map(log => String(log.decision)));
       setLogs(result.logs);
       setPagination(result.pagination);
     } catch (error) {
@@ -120,9 +121,15 @@ const RealtimeLogsTab = () => {
                       </span>
                     </td>
                     <td className="p-2">
-                      <Badge variant={log.decision === 'allowed' ? 'default' : 'destructive'}>
-                        {log.decision || 'N/A'}
-                      </Badge>
+                      <span
+                        className={
+                          String(log.decision).toLowerCase() === 'allow'
+                            ? 'inline-block px-3 py-1 rounded-full bg-green-100 text-green-800 font-bold text-xs'
+                            : 'inline-block px-3 py-1 rounded-full bg-red-100 text-red-800 font-bold text-xs'
+                        }
+                      >
+                        {String(log.decision).toUpperCase() || 'N/A'}
+                      </span>
                     </td>
                     <td className="p-2 text-sm text-gray-600 dark:text-gray-400">{log.reason || 'N/A'}</td>
                     <td className="p-2">

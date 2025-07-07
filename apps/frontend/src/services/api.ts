@@ -42,6 +42,13 @@ export interface AdminLog {
   decision?: string;
   reason?: string;
   block_type?: string;
+  ipInfo?: {
+    isp?: string;
+    org?: string;
+    status?: string;
+    message?: string;
+    [key: string]: string | number | undefined;
+  };
 }
 
 export interface DomainStats {

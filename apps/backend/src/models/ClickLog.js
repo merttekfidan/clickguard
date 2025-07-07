@@ -25,6 +25,7 @@ const ClickLogSchema = new mongoose.Schema({
   utm_content: String,
   referrer: String,
   domain: String,
+  ipInfo: Object, // Store VPN/ISP info from ip-api.com
 });
 
 module.exports = mongoose.model('ClickLog', ClickLogSchema); 

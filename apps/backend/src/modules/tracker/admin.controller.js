@@ -189,7 +189,7 @@ const getAdminLogs = async (req, res) => {
             .sort({ timestamp: -1 })
             .skip(skip)
             .limit(parseInt(limit))
-            .select('-deviceFingerprint -honeypot -pow'); // Exclude sensitive data
+            .select('-deviceFingerprint -honeypot -pow'); // Exclude sensitive data but include ipInfo
 
         // Get total count
         const total = await ClickLog.countDocuments(filter);

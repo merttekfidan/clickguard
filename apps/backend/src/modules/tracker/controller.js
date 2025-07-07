@@ -114,8 +114,20 @@ const handleTrackingData = async (req, res) => {
             }
         };
 
+        // Debug: Log the client IP being enriched
+        console.log('🌍 Enriching IP:', clientIP);
+
         // Step 2: Pass to analysis service (with customerId/campaignId)
-        await analysisService.processClick(enrichedData, customerId, campaignId);
+        const analysisResult = await analysisService.processClick(enrichedData, customerId, campaignId);
+
+        // Debug: Log the ipInfo result
+        if (enrichedData.ipInfo) {
+            console.log('🌐 ipInfo result:', enrichedData.ipInfo);
+        } else if (analysisResult && analysisResult.click && analysisResult.click.ipInfo) {
+            console.log('🌐 ipInfo result:', analysisResult.click.ipInfo);
+        } else {
+            console.log('🌐 ipInfo result: <none>');
+        }
 
         // Process the tracking data (store in memory for now)
         const result = await trackerService.processTrackingData(enrichedData);
@@ -148,7 +160,8 @@ const handleTrackingData = async (req, res) => {
                 utm_term: trackingData.utm_term,
                 utm_content: trackingData.utm_content,
                 referrer: trackingData.referrer || req.get('referer'),
-                domain: trackingData.domain
+                domain: trackingData.domain,
+                ipInfo: enrichedData.ipInfo // Add VPN/ISP info
             });
         } catch (err) {
             console.error('❌ Failed to save click log to MongoDB:', err);
@@ -298,10 +311,19 @@ const getGoogleAdsStats = async (req, res) => {
  * Get processed clicks (debug endpoint)
  */
 const getProcessedClicks = async (req, res) => {
-    res.status(200).json({
-        success: true,
-        data: processedClicks
-    });
+    try {
+        const clicks = processedClicks.slice(0, 20);
+        res.status(200).json({
+            success: true,
+            data: clicks
+        });
+    } catch (error) {
+        console.error('Error getting processed clicks:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
 };
 
 module.exports = {

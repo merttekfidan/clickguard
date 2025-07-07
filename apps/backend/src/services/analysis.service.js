@@ -1,6 +1,7 @@
 const ruleEngine = require('./ruleEngine.service');
 const crypto = require('crypto');
 const clickProcessor = require('../workers/clickProcessor.worker');
+const fetch = require('node-fetch');
 
 // In-memory stores
 const fingerprintCounts = {};
@@ -221,7 +222,29 @@ function getGoogleAdsStats() {
     };
 }
 
+/**
+ * Enrich click data with IP geolocation/ISP info using ip-api.com
+ */
+async function enrichIpInfo(ipAddress) {
+  if (!ipAddress) return null;
+  try {
+    const response = await fetch(`http://ip-api.com/json/${ipAddress}?fields=status,message,country,countryCode,regionName,city,zip,lat,lon,timezone,isp,org,as,query`);
+    const data = await response.json();
+    if (data.status === 'fail') {
+      console.warn(`ip-api.com failed for ${ipAddress}:`, data.message, data);
+    }
+    return data;
+  } catch (error) {
+    console.warn('IP enrichment failed:', error.message);
+    return { status: 'fail', message: error.message };
+  }
+}
+
 async function processClick(rawData, customerId = null, campaignId = null) {
+    // Enrich IP info if not present
+    if (!rawData.ipInfo && rawData.ipAddress) {
+        rawData.ipInfo = await enrichIpInfo(rawData.ipAddress);
+    }
     // Use the new worker for processing
     const logEntry = await clickProcessor.processClick(rawData, customerId, campaignId);
     

@@ -14,7 +14,7 @@ console.log('TEST: clickguard-tracker.js loaded');
     
     // Configuration
     const CONFIG = {
-        endpoint: 'https://0385-95-160-158-68.ngrok-free.app/api/v1/tracker',
+        endpoint: 'https://7aa9-95-160-158-68.ngrok-free.app/api/v1/tracker',
         timeout: 5000,
         retryAttempts: 3,
         retryDelay: 1000
